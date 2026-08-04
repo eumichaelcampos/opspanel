@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opspanel
+          POSTGRES_PASSWORD: opspanel
+          POSTGRES_DB: opspanel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opspanel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://opspanel:opspanel@localhost:5432/opspanel
+      REDIS_URL: redis://localhost:6379
+      API_PORT: 3001
+      API_URL: http://localhost:3001
+      WEB_URL: http://localhost:3000
+      NODE_ENV: test
+      SESSION_SECRET: ci-session-secret-minimum-32-characters-long
+      CREDENTIALS_ENCRYPTION_KEY: Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzIQ==
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma
+        run: pnpm db:generate
+
+      - name: Migrate
+        run: pnpm --filter @opspanel/database exec prisma migrate deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

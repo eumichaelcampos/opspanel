@@ -1,0 +1,1 @@
+ALTER TABLE "Site" ADD COLUMN IF NOT EXISTS "infoSnapshot" JSONB;

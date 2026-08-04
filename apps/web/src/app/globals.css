@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply min-h-screen text-ink antialiased;
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(234, 192, 167, 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 10%, rgba(198, 200, 203, 0.45) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(201, 109, 58, 0.08) 0%, transparent 45%),
+    linear-gradient(145deg, #f5ebe3 0%, #e8ebf0 42%, #dde2ea 100%);
+  background-attachment: fixed;
+}
+
+.glass-panel {
+  @apply rounded-shell border border-white/80 shadow-glass backdrop-blur-2xl;
+  background-color: rgb(255 255 255 / 0.55);
+}
+
+.glass-card {
+  @apply rounded-card border border-white/75 shadow-glass backdrop-blur-md;
+  background-color: rgb(255 255 255 / 0.72);
+}
+
+.glass-card-dark {
+  @apply rounded-card border border-white/10 text-white shadow-glass backdrop-blur-xl;
+  background-color: rgb(22 34 55 / 0.85);
+}
+
+.dashboard-hero {
+  @apply relative overflow-hidden rounded-shell border border-white/80 bg-gradient-to-br from-white/70 via-white/50 to-white/30 p-6 shadow-glass backdrop-blur-xl;
+}
+
+.dashboard-table-row {
+  @apply border-b border-white/60 transition hover:bg-white/50 last:border-0;
+}
+
+.wizard-enter {
+  animation: wizardFadeIn 0.45s ease-out;
+}
+
+@keyframes wizardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

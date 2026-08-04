@@ -1,0 +1,28 @@
+{
+  "name": "@opspanel/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "node scripts/migrate-deploy.mjs",
+    "seed": "tsx prisma/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo lint database"
+  },
+  "dependencies": {
+    "@opspanel/security": "workspace:*",
+    "@prisma/client": "^6.14.0"
+  },
+  "devDependencies": {
+    "@opspanel/typescript-config": "workspace:*",
+    "@types/node": "^24.3.0",
+    "prisma": "^6.14.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  }
+}

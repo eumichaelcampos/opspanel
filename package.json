@@ -1,0 +1,26 @@
+{
+  "name": "opspanel",
+  "version": "1.0.0",
+  "description": "Control plane web para servidores WordOps",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "db:generate": "pnpm --filter @opspanel/database generate",
+    "db:migrate": "pnpm --filter @opspanel/database migrate:dev",
+    "db:seed": "pnpm --filter @opspanel/database seed",
+    "format": "prettier -w \"**/*.{ts,tsx,md,json}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.5",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

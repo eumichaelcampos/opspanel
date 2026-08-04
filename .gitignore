@@ -1,0 +1,16 @@
+node_modules
+.turbo
+dist
+.next
+coverage
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.cookies.txt
+*.pem
+*.key
+.idea
+.vscode
+Thumbs.db

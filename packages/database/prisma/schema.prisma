@@ -1,0 +1,267 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrgRole {
+  owner
+  admin
+  operator
+  developer
+  viewer
+}
+
+enum JobStatus {
+  queued
+  validating
+  running
+  verifying
+  succeeded
+  failed
+  cancelled
+  timed_out
+}
+
+enum ServerStatus {
+  pending
+  connecting
+  healthy
+  warning
+  critical
+  offline
+  incompatible
+  revoked
+}
+
+enum CredentialType {
+  ssh_private_key
+  ssh_password
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  memberships OrganizationMember[]
+  sessions    Session[]
+  jobs        Job[]                @relation("JobRequestedBy")
+  auditLogs   AuditLog[]
+  apiKeys     ApiKey[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+}
+
+enum SiteStatus {
+  unknown
+  active
+  disabled
+  provisioning
+  failed
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  members OrganizationMember[]
+  servers Server[]
+  sites   Site[]
+  jobs    Job[]
+  auditLogs AuditLog[]
+  apiKeys ApiKey[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrgRole      @default(viewer)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+}
+
+model Server {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  host           String
+  port           Int          @default(22)
+  status         ServerStatus @default(pending)
+  lastConnectedAt DateTime?
+  osRelease      String?
+  wordopsVersion String?
+  tags           String[]     @default([])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credential   ServerCredential?
+  jobs         Job[]
+  sites        Site[]
+  lastSyncedAt DateTime?
+  healthSnapshot Json?
+  healthObservedAt DateTime?
+  metricsSnapshot Json?
+  metricsObservedAt DateTime?
+  onboardingSnapshot Json?
+  onboardingCompletedAt DateTime?
+  wordopsDashboard Json?
+}
+
+model Site {
+  id             String     @id @default(uuid())
+  organizationId String
+  serverId       String
+  domain         String
+  siteType       String?
+  phpVersion     String?
+  cacheBackend   String?
+  status         SiteStatus @default(unknown)
+  isEnabled      Boolean?
+  infoSnapshot   Json?
+  lastObservedAt DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  server       Server       @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  ftpUsers     SiteFtpUser[]
+
+  @@unique([organizationId, domain])
+  @@index([serverId])
+}
+
+model SiteFtpUser {
+  id        String   @id @default(uuid())
+  siteId    String
+  username  String
+  homePath  String
+  createdAt DateTime @default(now())
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, username])
+  @@index([siteId])
+}
+
+model ServerCredential {
+  id          String         @id @default(uuid())
+  serverId    String         @unique
+  type        CredentialType
+  username    String
+  ciphertext  String
+  iv          String
+  authTag     String
+  keyVersion  Int            @default(1)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id              String    @id @default(uuid())
+  organizationId  String
+  requestedById   String
+  serverId        String?
+  operationKey    String
+  status          JobStatus @default(queued)
+  progress        Int       @default(0)
+  currentStep     String?
+  idempotencyKey  String?
+  inputJson       Json?
+  resultJson      Json?
+  errorCode       String?
+  errorMessage    String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User         @relation("JobRequestedBy", fields: [requestedById], references: [id])
+  server       Server?      @relation(fields: [serverId], references: [id])
+  events       JobEvent[]
+
+  @@index([organizationId, status])
+  @@index([idempotencyKey])
+}
+
+model JobEvent {
+  id        String   @id @default(uuid())
+  jobId     String
+  sequence  Int
+  type      String
+  message   String
+  progress  Int?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, sequence])
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  actorUserId    String?
+  action         String
+  targetType     String
+  targetId       String?
+  result         String
+  ipAddress      String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorUserId], references: [id])
+
+  @@index([organizationId, createdAt])
+}
+
+model ApiKey {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  keyHash        String    @unique
+  keyPrefix      String
+  createdById    String
+  lastUsedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  revokedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}

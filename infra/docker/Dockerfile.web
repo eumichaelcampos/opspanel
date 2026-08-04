@@ -1,0 +1,27 @@
+# Dockerfile for OpsPanel Web (Next.js)
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/web/package.json apps/web/
+COPY packages/contracts/package.json packages/contracts/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+COPY . .
+ARG NEXT_PUBLIC_GITHUB_REPO=your-org/opspanel
+ENV NEXT_PUBLIC_GITHUB_REPO=$NEXT_PUBLIC_GITHUB_REPO
+ENV API_URL=http://api:3001
+RUN pnpm --filter @opspanel/web build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/apps/web/.next/standalone ./
+COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build /app/apps/web/public ./apps/web/public
+EXPOSE 3000
+ENV PORT=3000
+CMD ["node", "apps/web/server.js"]

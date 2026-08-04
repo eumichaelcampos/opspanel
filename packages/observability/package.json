@@ -1,0 +1,21 @@
+{
+  "name": "@opspanel/observability",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo lint observability"
+  },
+  "dependencies": {
+    "pino": "^9.9.0",
+    "pino-pretty": "^13.1.1"
+  },
+  "devDependencies": {
+    "@opspanel/typescript-config": "workspace:*",
+    "typescript": "^5.9.2"
+  }
+}
