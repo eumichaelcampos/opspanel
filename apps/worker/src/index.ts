@@ -2,7 +2,7 @@ import { config } from "dotenv";
 
 import { resolve } from "node:path";
 
-config({ path: resolve(process.cwd(), "../../.env") });
+config({ path: resolve(process.cwd(), "../../.env"), override: true });
 
 
 
@@ -10,7 +10,7 @@ import { Worker } from "bullmq";
 
 import { Redis } from "ioredis";
 
-import { JobStatus, ServerStatus, SiteStatus, prisma } from "@opspanel/database";
+import { JobStatus, Prisma, ServerStatus, SiteStatus, prisma } from "@opspanel/database";
 
 import { OperationKeys } from "@opspanel/contracts";
 
@@ -144,12 +144,14 @@ async function processConnectionTest(jobId: string) {
 
         ...(result.healthHint
           ? {
-              healthSnapshot: {
-                ...prevHealth,
-                stackComponents: result.healthHint.stackComponents ?? prevHealth.stackComponents,
-                uptimeSeconds: result.healthHint.uptimeSeconds ?? prevHealth.uptimeSeconds,
-                collectedAt: result.healthHint.collectedAt ?? new Date().toISOString(),
-              },
+              healthSnapshot: JSON.parse(
+                JSON.stringify({
+                  ...prevHealth,
+                  stackComponents: result.healthHint.stackComponents ?? prevHealth.stackComponents,
+                  uptimeSeconds: result.healthHint.uptimeSeconds ?? prevHealth.uptimeSeconds,
+                  collectedAt: result.healthHint.collectedAt ?? new Date().toISOString(),
+                }),
+              ) as Prisma.InputJsonValue,
               healthObservedAt: new Date(),
             }
           : {}),

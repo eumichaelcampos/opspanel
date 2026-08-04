@@ -14,9 +14,11 @@ import {
   Plus,
   BarChart3,
   Bot,
+  CreditCard,
   Settings,
   User,
 } from "lucide-react";
+import { UpdateNotification } from "@/components/update-notification";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 
@@ -35,6 +37,7 @@ const opsNav = [
 
 const settingsNav = [
   { href: "/settings/profile", label: "Perfil", icon: User },
+  { href: "/settings/plan", label: "Plano e uso", icon: CreditCard },
   { href: "/settings/account", label: "Conta & API", icon: Settings },
 ];
 
@@ -147,6 +150,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <UpdateNotification />
         <header className="glass-panel flex items-center justify-between gap-4 px-5 py-4 lg:px-6">
           <div>
             <p className="text-xs text-muted">{me?.user.organizationName ?? "Organização"}</p>

@@ -25,6 +25,7 @@
     "@opspanel/config": "workspace:*",
     "@opspanel/contracts": "workspace:*",
     "@opspanel/database": "workspace:*",
+    "@opspanel/licensing": "workspace:*",
     "@opspanel/observability": "workspace:*",
     "@opspanel/security": "workspace:*",
     "bullmq": "^5.58.0",

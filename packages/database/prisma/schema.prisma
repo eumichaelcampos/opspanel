@@ -15,6 +15,13 @@ enum OrgRole {
   viewer
 }
 
+enum LicenseStatus {
+  active
+  grace
+  expired
+  suspended
+}
+
 enum JobStatus {
   queued
   validating
@@ -56,6 +63,7 @@ model User {
   jobs        Job[]                @relation("JobRequestedBy")
   auditLogs   AuditLog[]
   apiKeys     ApiKey[]
+  updateDismissals UserUpdateDismissal[]
 }
 
 model Session {
@@ -264,4 +272,61 @@ model ApiKey {
   createdBy    User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+model LicenseState {
+  id             String        @id @default("default")
+  instanceId     String        @unique
+  licenseKeyHash String?
+  plan           String
+  status         LicenseStatus @default(active)
+  entitlements   Json
+  validUntil     DateTime?
+  lastSyncAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model UsageCounter {
+  id     String @id @default(uuid())
+  metric String
+  period String
+  count  Int    @default(0)
+
+  @@unique([metric, period])
+  @@index([period])
+}
+
+model SystemUpdateState {
+  id               String    @id @default("default")
+  currentVersion   String
+  latestVersion    String?
+  latestChangelog  String?
+  latestReleaseUrl String?
+  updateAvailable  Boolean   @default(false)
+  lastCheckedAt    DateTime?
+  applyStatus      String    @default("idle")
+  applyLog         String?
+  applyStartedAt   DateTime?
+  applyFinishedAt  DateTime?
+  updatedAt        DateTime  @updatedAt
+}
+
+model SystemSetupState {
+  id          String    @id @default("default")
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model UserUpdateDismissal {
+  id          String   @id @default(uuid())
+  userId      String
+  version     String
+  dismissedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, version])
+  @@index([userId])
 }

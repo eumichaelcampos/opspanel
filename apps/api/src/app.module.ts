@@ -7,6 +7,9 @@ import { AuditModule } from "./audit/audit.module";
 import { TerminalModule } from "./terminal/terminal.module";
 import { HealthModule } from "./health/health.module";
 import { JobsModule } from "./jobs/jobs.module";
+import { LicenseModule } from "./license/license.module";
+import { SetupModule } from "./setup/setup.module";
+import { UpdatesModule } from "./updates/updates.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { QueueModule } from "./queue/queue.module";
@@ -17,9 +20,12 @@ import { ServersModule } from "./servers/servers.module";
 @Module({
   imports: [
     PrismaModule,
+    AuthModule,
     QueueModule,
     AuditModule,
-    AuthModule,
+    LicenseModule,
+    SetupModule,
+    UpdatesModule,
     ApiKeysModule,
     AssistantModule,
     ReportsModule,

@@ -125,20 +125,22 @@ export function OperationTerminal({
     );
   }
 
-  const running = !TERMINAL.has(data.status);
-  const failed = data.status === "failed" || data.status === "timed_out" || data.status === "cancelled";
-  const queued = data.status === "queued";
+  const job = data;
+
+  const running = !TERMINAL.has(job.status);
+  const failed = job.status === "failed" || job.status === "timed_out" || job.status === "cancelled";
+  const queued = job.status === "queued";
 
   function emptyTerminalMessage(): string {
     if (queued) {
       return "Operação na fila… o worker processará em instantes. Se ficar parado por mais de 1 minuto, verifique se o worker está rodando (pnpm dev).";
     }
-    if (failed && data.errorMessage) {
-      return data.errorMessage;
+    if (failed && job.errorMessage) {
+      return job.errorMessage;
     }
     if (running) {
-      return data.currentStep
-        ? `Executando: ${data.currentStep}…`
+      return job.currentStep
+        ? `Executando: ${job.currentStep}…`
         : "Conectando ao servidor via SSH… a saída aparecerá em breve.";
     }
     return "Nenhuma saída registrada para esta operação.";

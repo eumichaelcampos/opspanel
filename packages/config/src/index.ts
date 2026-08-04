@@ -16,9 +16,19 @@ const envSchema = z.object({
   SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().optional(),
+  LICENSE_KEY: z.string().min(20).optional(),
+  LICENSE_PLAN: z.enum(["free", "pro", "business"]).default("free"),
+  LICENSE_ENTITLEMENTS_JWT: z.string().optional(),
+  LICENSE_SIGNING_SECRET: z.string().min(32).optional(),
+  LICENSE_SERVER_URL: z.string().url().optional(),
+  LICENSE_REGISTER_SECRET: z.string().min(16).optional(),
+  APP_VERSION: z.string().default("1.0.0"),
+  UPDATE_GITHUB_REPO: z.string().default("eumichaelcampos/opspanel"),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
+
+export { compareVersions, isNewerVersion, parseVersion } from "./semver.js";
 
 const WEAK_SECRETS = new Set([
   "change-me-session-secret-min-32-chars!!",
@@ -36,6 +46,9 @@ function assertProductionSecrets(env: AppEnv) {
   }
   if (env.SEED_ADMIN_PASSWORD && WEAK_SECRETS.has(env.SEED_ADMIN_PASSWORD)) {
     throw new Error("Production: change SEED_ADMIN_PASSWORD before seeding.");
+  }
+  if (!env.LICENSE_KEY) {
+    throw new Error("Production: LICENSE_KEY is required (generate with scripts/generate-license.mjs).");
   }
 }
 

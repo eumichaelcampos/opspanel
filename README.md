@@ -58,6 +58,78 @@ pnpm dev
 
 Login inicial (seed): `admin@localhost` / `ChangeMe123!`
 
+### Licença e planos
+
+Cada instalação usa uma **LICENSE_KEY** (mesmo no plano free). Gere com:
+
+```bash
+node scripts/generate-license.mjs free
+```
+
+Cole `LICENSE_KEY`, `LICENSE_PLAN`, `LICENSE_SIGNING_SECRET` e `LICENSE_ENTITLEMENTS_JWT` no `.env`.
+
+Limites por plano (servidores, sites, jobs/mês, API keys, IA) são aplicados na API. Veja uso em **Configurações → Plano e uso**.
+
+Em produção, `LICENSE_KEY` é **obrigatória**.
+
+### License Cloud (M2)
+
+Serviço separado em `Desktop/opspanel-license` (porta **3003**):
+
+```bash
+cd ../opspanel-license
+copy .env.example .env
+npm install && npm run db:push && npm run db:seed && npm run dev
+```
+
+No `.env` do OpsPanel:
+
+```env
+LICENSE_SERVER_URL=http://localhost:3003
+LICENSE_SIGNING_SECRET=dev-license-signing-secret-32chars!
+LICENSE_KEY=<chave gerada pelo seed>
+```
+
+### Billing / Stripe (M3)
+
+No License Cloud, configure Stripe para checkout e portal de assinatura:
+
+```env
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_PRO=price_...
+STRIPE_PRICE_BUSINESS=price_...
+BILLING_SUCCESS_URL=http://localhost:3000/settings/plan?billing=success
+BILLING_CANCEL_URL=http://localhost:3000/settings/plan?billing=cancel
+BILLING_PORTAL_RETURN_URL=http://localhost:3000/settings/plan
+```
+
+Webhook Stripe: `POST https://license.seudominio.com/v1/billing/webhook`
+
+No painel: **Configurações → Plano e uso** → escolha Pro/Business ou **Gerenciar assinatura** (portal Stripe).
+
+### Publisher Admin (M4) + Setup inicial
+
+O OpsPanel é **self-hosted** (cada cliente instala no servidor dele). A conexão com você é via **licença + heartbeat**.
+
+| Plataforma | Porta | Quem usa |
+|------------|-------|----------|
+| OpsPanel | 3000 | Cliente (instalação local/VPS) |
+| License Cloud API | 3003 | Backend (activate/heartbeat/billing) |
+| **Publisher Admin** | 3004 | **Você** (licenças, instâncias, telemetria) |
+| Site comercial | 3002 | Marketing |
+
+**First-run:** http://localhost:3000/setup (conta admin + licença free via License Cloud)
+
+**Publisher:** http://localhost:3004 (`publisher@localhost` / ver seed do License Cloud)
+
+Coloque no `.env` do OpsPanel após setup:
+
+```env
+LICENSE_SERVER_URL=http://localhost:3003
+LICENSE_KEY=<chave do setup ou seed>
+```
+
 ## Produção
 
 ### Variáveis obrigatórias

@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 const SESSION_COOKIE = "opspanel_session";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/setup"];
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
