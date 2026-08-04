@@ -4,9 +4,7 @@
 
 Gerencie VPS, provisione stacks, crie sites WordPress, monitore recursos, opere via jobs assíncronos e integre com IA (assistente + MCP server).
 
-[![CI](https://github.com/your-org/opspanel/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/opspanel/actions/workflows/ci.yml)
-
-![OpsPanel](docs/product/README.md)
+[![CI](https://github.com/eumichaelcampos/opspanel/actions/workflows/ci.yml/badge.svg)](https://github.com/eumichaelcampos/opspanel/actions/workflows/ci.yml)
 
 ## Recursos
 
@@ -26,14 +24,10 @@ Gerencie VPS, provisione stacks, crie sites WordPress, monitore recursos, opere 
 - pnpm 9+ (`corepack enable`)
 - Docker (PostgreSQL 16 + Redis 7)
 
-### Instalação via terminal (GitHub)
-
-**Recomendado:** use o assistente em http://localhost:3002/install (app `landing`, após `pnpm dev`) para escolher IP, domínio ou subdomínio e gerar `.env`, Nginx/Caddy e comandos.
-
-Ou manualmente:
+### Instalação
 
 ```bash
-git clone https://github.com/your-org/opspanel.git
+git clone https://github.com/eumichaelcampos/opspanel.git
 cd opspanel
 cp .env.example .env
 cp apps/web/.env.example apps/web/.env.local
@@ -58,13 +52,11 @@ chmod +x scripts/install.sh && ./scripts/install.sh
 pnpm dev
 ```
 
-- **Landing comercial:** http://localhost:3002
-- **Wizard instalação:** http://localhost:3002/install
 - **Painel:** http://localhost:3000/login
 - **API:** http://localhost:3001/api/v1
 - **Swagger (dev):** http://localhost:3001/api/docs
 
-> A landing (`apps/landing`) é deploy independente do painel. Configure `NEXT_PUBLIC_PANEL_URL` na landing para apontar ao painel em produção.
+Login inicial (seed): `admin@localhost` / `ChangeMe123!`
 
 ## Produção
 
@@ -94,7 +86,7 @@ pnpm --filter @opspanel/web start
 
 ### Docker
 
-Dockerfiles em `infra/docker/` (`Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.web`, `Dockerfile.landing`).
+Dockerfiles em `infra/docker/` (`Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.web`).
 
 Use reverse proxy (Nginx/Caddy) com HTTPS na frente do Next.js (3000) e API (3001).
 
@@ -122,8 +114,7 @@ Gere uma API key em **Configurações → Conta & API** e configure:
 ```
 apps/
   api/      NestJS + Fastify REST API
-  web/      Next.js 15 painel (produto)
-  landing/  Next.js 15 site comercial + wizard de instalação
+  web/      Next.js 15 painel
   worker/   BullMQ + SSH/WordOps
 packages/
   config/   Validação env (Zod)
