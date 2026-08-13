@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Check, CreditCard, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, CreditCard, ExternalLink, KeyRound, RefreshCw } from "lucide-react";
 
 type LicenseResponse = {
   license: {
@@ -68,9 +68,21 @@ function formatPrice(plan: BillingPlan): string {
   }).format(plan.priceMonthly);
 }
 
+function planLabel(planId: string): string {
+  if (planId === "full_free") return "Full Free";
+  if (planId === "pro") return "Pro";
+  if (planId === "business") return "Business";
+  if (planId === "free") return "Free";
+  return planId;
+}
+
+const CLIENT_VISIBLE_PLANS = new Set(["free", "pro", "business"]);
+
 export default function PlanSettingsPage() {
   const qc = useQueryClient();
   const [billingResult, setBillingResult] = useState<string | null>(null);
+  const [licenseKeyInput, setLicenseKeyInput] = useState("");
+  const [licenseFeedback, setLicenseFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -111,6 +123,25 @@ export default function PlanSettingsPage() {
     },
   });
 
+  const activateMutation = useMutation({
+    mutationFn: (licenseKey: string) =>
+      apiFetch<{ ok: boolean; license: LicenseResponse["license"] }>("/license/activate", {
+        method: "POST",
+        body: JSON.stringify({ licenseKey }),
+      }),
+    onSuccess: () => {
+      setLicenseKeyInput("");
+      setLicenseFeedback({ type: "success", message: "Licença ativada com sucesso." });
+      void qc.invalidateQueries({ queryKey: ["license"] });
+    },
+    onError: (err) => {
+      setLicenseFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Falha ao ativar licença.",
+      });
+    },
+  });
+
   useEffect(() => {
     if (billingResult === "success" && data?.license.cloudConnected && !syncMutation.isPending) {
       syncMutation.mutate();
@@ -119,6 +150,7 @@ export default function PlanSettingsPage() {
 
   const currentPlan = data?.license.plan ?? "free";
   const billingEnabled = billingPlans?.enabled ?? data?.license.billing?.enabled ?? false;
+  const visiblePlans = billingPlans?.plans.filter((p) => CLIENT_VISIBLE_PLANS.has(p.id)) ?? [];
 
   return (
     <AppShell title="Plano e uso">
@@ -144,7 +176,7 @@ export default function PlanSettingsPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-widest text-accent">Plano atual</p>
-                  <h2 className="mt-1 text-2xl font-bold capitalize text-ink">{data.license.plan}</h2>
+                  <h2 className="mt-1 text-2xl font-bold text-ink">{planLabel(data.license.plan)}</h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {data.license.cloudConnected ? (
@@ -194,18 +226,61 @@ export default function PlanSettingsPage() {
               <p className="mt-1 font-mono text-[11px] text-muted">Instância: {data.license.instanceId}</p>
             </section>
 
-            {billingPlans?.plans?.length ? (
+            <section className="glass-card space-y-4 p-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+                  <KeyRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-ink">Adicionar licença</h3>
+                  <p className="mt-1 text-sm text-muted">
+                    Cole a chave de licença recebida por e-mail (ex.: <code className="text-xs">oplic_live_…</code>)
+                    para ativar Pro, Business ou outro plano.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  className="flex-1 rounded-card border border-ink/20 bg-white/80 px-3 py-2.5 font-mono text-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  placeholder="oplic_live_xxxxxxxx"
+                  value={licenseKeyInput}
+                  onChange={(e) => setLicenseKeyInput(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  disabled={licenseKeyInput.trim().length < 20 || activateMutation.isPending}
+                  onClick={() => activateMutation.mutate(licenseKeyInput.trim())}
+                  className="rounded-card bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-95 disabled:opacity-60"
+                >
+                  {activateMutation.isPending ? "Ativando…" : "Ativar licença"}
+                </button>
+              </div>
+              {licenseFeedback ? (
+                <p
+                  className={cn(
+                    "text-sm",
+                    licenseFeedback.type === "error" ? "text-danger" : "text-accent",
+                  )}
+                >
+                  {licenseFeedback.message}
+                </p>
+              ) : null}
+            </section>
+
+            {visiblePlans.length ? (
               <section className="space-y-3">
                 <div>
                   <h3 className="font-semibold text-ink">Planos disponíveis</h3>
                   <p className="text-sm text-muted">
                     {billingEnabled
-                      ? "Upgrade via Stripe. Após o pagamento, a licença é atualizada automaticamente."
-                      : "Configure Stripe no License Cloud para habilitar checkout."}
+                      ? "Faça upgrade. Após o pagamento, o plano atualiza automaticamente."
+                      : "Checkout online indisponível no momento. Use uma chave de licença acima ou fale conosco."}
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
-                  {billingPlans.plans.map((plan) => {
+                  {visiblePlans.map((plan) => {
                     const isCurrent = plan.id === currentPlan;
                     const canUpgrade =
                       billingEnabled &&
@@ -250,7 +325,7 @@ export default function PlanSettingsPage() {
                             </button>
                           ) : (
                             <span className="inline-flex w-full items-center justify-center rounded-card border px-3 py-2 text-sm text-muted">
-                              {billingEnabled ? "Indisponível" : "Stripe off"}
+                              {billingEnabled ? "Indisponível" : "Em breve"}
                             </span>
                           )}
                         </div>
@@ -278,11 +353,10 @@ export default function PlanSettingsPage() {
 
             <section className="glass-card p-6 text-sm text-muted">
               <p>
-                Com License Cloud configurado (`LICENSE_SERVER_URL`), a instância envia heartbeat automático a cada 6 horas
-                com métricas de uso.
+                A instância valida a licença periodicamente e mantém os limites do plano sincronizados.
               </p>
               {!data.license.licenseKeyConfigured ? (
-                <p className="mt-3 text-warning">Nenhuma LICENSE_KEY no `.env` da API.</p>
+                <p className="mt-3 text-warning">Nenhuma chave de licença ativa nesta instalação.</p>
               ) : null}
             </section>
           </>

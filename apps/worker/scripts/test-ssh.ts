@@ -1,8 +1,17 @@
+/**
+ * Diagnóstico SSH de um servidor cadastrado no banco local.
+ * Uso: npx tsx apps/worker/scripts/test-ssh.ts <serverId>
+ * Não embute IDs nem IPs de cliente.
+ */
 import { loadSshTargetForServer } from "../src/server-credentials.js";
 import { testSshConnection } from "../src/ssh-executor.js";
 import { Client } from "ssh2";
 
-const serverId = process.argv[2] ?? "0ad1a334-7f7d-4dd0-82e4-d6d4dacb7edf";
+const serverId = process.argv[2];
+if (!serverId) {
+  console.error("Uso: npx tsx apps/worker/scripts/test-ssh.ts <serverId>");
+  process.exit(1);
+}
 
 async function tcpProbe(host: string, port: number, timeoutMs = 8000): Promise<{ ok: boolean; ms: number; error?: string }> {
   const net = await import("node:net");

@@ -2,7 +2,7 @@
 
 **Control plane open source para servidores Linux com [WordOps](https://wordops.net).**
 
-Gerencie VPS, provisione stacks, crie sites WordPress, monitore recursos, opere via jobs assíncronos e integre com IA (assistente + MCP server).
+Gerencie VPS, provisione stacks, crie e migre sites WordPress, valide DNS, monitore recursos, opere via jobs assíncronos e integre com IA (assistente + MCP server).
 
 [![CI](https://github.com/eumichaelcampos/opspanel/actions/workflows/ci.yml/badge.svg)](https://github.com/eumichaelcampos/opspanel/actions/workflows/ci.yml)
 
@@ -10,8 +10,8 @@ Gerencie VPS, provisione stacks, crie sites WordPress, monitore recursos, opere 
 
 | Módulo | Capacidades |
 |--------|-------------|
-| **Servidores** | SSH criptografado, onboarding wizard, stack ops, health/metrics Netdata, console SSH, reboot/maintenance |
-| **Sites** | Criação WP/HTML/PHP, SSL, backup, FTP, file manager SFTP, troca de domínio |
+| **Servidores** | SSH criptografado, onboarding wizard, stack WordOps, health/metrics Netdata, console SSH, reboot/maintenance |
+| **Sites** | Criação WP/HTML/PHP, SSL, inventário, migração FTP/SFTP, alerta DNS/Cloudflare, backup, file manager SFTP |
 | **Operações** | Jobs BullMQ + SSE, auditoria, relatórios |
 | **Integrações** | Assistente IA, MCP server (`@opspanel/mcp-server`), API keys |
 | **Segurança** | Sessão HttpOnly, Argon2, RBAC, rate limit, secrets validation em produção |
@@ -52,83 +52,13 @@ chmod +x scripts/install.sh && ./scripts/install.sh
 pnpm dev
 ```
 
-- **Painel:** http://localhost:3000/login
+- **Painel:** http://localhost:3000
 - **API:** http://localhost:3001/api/v1
 - **Swagger (dev):** http://localhost:3001/api/docs
 
-Login inicial (seed): `admin@localhost` / `ChangeMe123!`
+Na primeira execução, abra o painel e conclua o **setup** (conta admin + ativação da licença free).
 
-### Licença e planos
-
-Cada instalação usa uma **LICENSE_KEY** (mesmo no plano free). Gere com:
-
-```bash
-node scripts/generate-license.mjs free
-```
-
-Cole `LICENSE_KEY`, `LICENSE_PLAN`, `LICENSE_SIGNING_SECRET` e `LICENSE_ENTITLEMENTS_JWT` no `.env`.
-
-Limites por plano (servidores, sites, jobs/mês, API keys, IA) são aplicados na API. Veja uso em **Configurações → Plano e uso**.
-
-Em produção, `LICENSE_KEY` é **obrigatória**.
-
-### License Cloud (M2)
-
-Serviço separado em `Desktop/opspanel-license` (porta **3003**):
-
-```bash
-cd ../opspanel-license
-copy .env.example .env
-npm install && npm run db:push && npm run db:seed && npm run dev
-```
-
-No `.env` do OpsPanel:
-
-```env
-LICENSE_SERVER_URL=http://localhost:3003
-LICENSE_SIGNING_SECRET=dev-license-signing-secret-32chars!
-LICENSE_KEY=<chave gerada pelo seed>
-```
-
-### Billing / Stripe (M3)
-
-No License Cloud, configure Stripe para checkout e portal de assinatura:
-
-```env
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_PRO=price_...
-STRIPE_PRICE_BUSINESS=price_...
-BILLING_SUCCESS_URL=http://localhost:3000/settings/plan?billing=success
-BILLING_CANCEL_URL=http://localhost:3000/settings/plan?billing=cancel
-BILLING_PORTAL_RETURN_URL=http://localhost:3000/settings/plan
-```
-
-Webhook Stripe: `POST https://license.seudominio.com/v1/billing/webhook`
-
-No painel: **Configurações → Plano e uso** → escolha Pro/Business ou **Gerenciar assinatura** (portal Stripe).
-
-### Publisher Admin (M4) + Setup inicial
-
-O OpsPanel é **self-hosted** (cada cliente instala no servidor dele). A conexão com você é via **licença + heartbeat**.
-
-| Plataforma | Porta | Quem usa |
-|------------|-------|----------|
-| OpsPanel | 3000 | Cliente (instalação local/VPS) |
-| License Cloud API | 3003 | Backend (activate/heartbeat/billing) |
-| **Publisher Admin** | 3004 | **Você** (licenças, instâncias, telemetria) |
-| Site comercial | 3002 | Marketing |
-
-**First-run:** http://localhost:3000/setup (conta admin + licença free via License Cloud)
-
-**Publisher:** http://localhost:3004 (`publisher@localhost` / ver seed do License Cloud)
-
-Coloque no `.env` do OpsPanel após setup:
-
-```env
-LICENSE_SERVER_URL=http://localhost:3003
-LICENSE_KEY=<chave do setup ou seed>
-```
+Em ambientes já seedados: `admin@localhost` / `ChangeMe123!` (altere antes de produção).
 
 ## Produção
 
@@ -144,17 +74,31 @@ SESSION_SECRET=<random 32+ chars>
 CREDENTIALS_ENCRYPTION_KEY=<base64 32 bytes>
 ```
 
-Em produção, valores padrão de `.env.example` são **rejeitados** na inicialização.
+Em produção, valores padrão de `.env.example` são **rejeitados** na inicialização. A licença é configurada no fluxo de setup do painel (ou via `LICENSE_KEY` no `.env`).
 
-### Build e start
+### Build e start (PM2)
 
 ```bash
 pnpm build
 pnpm --filter @opspanel/database exec prisma migrate deploy
-pnpm --filter @opspanel/api start &
-pnpm --filter @opspanel/worker start &
-pnpm --filter @opspanel/web start
+pm2 start scripts/deploy-vps/ecosystem.config.cjs
+pm2 save
 ```
+
+### Restart automático após reboot (obrigatório em VPS)
+
+Garante que Docker (Postgres/Redis) e PM2 (api/web/worker) voltem sozinhos:
+
+```bash
+sudo bash scripts/enable-boot-restart.sh
+```
+
+Isso habilita:
+- `docker` no boot + `restart: unless-stopped` nos containers
+- `pm2-root.service`
+- `opspanel-boot.service` (sobe compose, espera o banco e restaura o PM2)
+
+Instalação completa em VPS Ubuntu também já chama esse passo via `scripts/deploy-vps/install-remote.sh`.
 
 ### Docker
 

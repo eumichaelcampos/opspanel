@@ -24,6 +24,8 @@ export default function SetupPage() {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminName, setAdminName] = useState("");
+  const [panelDomain, setPanelDomain] = useState("");
+  const [panelUseHttps, setPanelUseHttps] = useState(true);
   const [licenseServerUrl, setLicenseServerUrl] = useState(DEFAULT_LICENSE_SERVER_URL);
   const [licenseKey, setLicenseKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +66,8 @@ export default function SetupPage() {
           adminName: adminName || undefined,
           licenseKey,
           licenseServerUrl: licenseServerUrl || undefined,
+          panelDomain: panelDomain.trim() || undefined,
+          panelUseHttps,
         }),
       }),
     onSuccess: async () => {
@@ -96,7 +100,7 @@ export default function SetupPage() {
           <p className="text-xs uppercase tracking-widest text-accent">OpsPanel</p>
           <h1 className="text-2xl font-semibold text-ink">Configuração inicial</h1>
           <p className="mt-1 text-sm text-muted">
-            Instalação self-hosted. Conecte sua licença free ao License Cloud para ativar o painel.
+            Instalação self-hosted. Crie a conta admin e ative a licença free para começar.
           </p>
         </div>
 
@@ -118,7 +122,7 @@ export default function SetupPage() {
             <label className="block space-y-1 text-sm">
               <span className="text-muted">Nome da organização</span>
               <input
-                className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2"
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
                 placeholder="Minha agência"
@@ -128,7 +132,7 @@ export default function SetupPage() {
             <label className="block space-y-1 text-sm">
               <span className="text-muted">Seu nome</span>
               <input
-                className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2"
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 value={adminName}
                 onChange={(e) => setAdminName(e.target.value)}
               />
@@ -136,7 +140,7 @@ export default function SetupPage() {
             <label className="block space-y-1 text-sm">
               <span className="text-muted">E-mail admin</span>
               <input
-                className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2"
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 type="email"
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
@@ -146,12 +150,32 @@ export default function SetupPage() {
             <label className="block space-y-1 text-sm">
               <span className="text-muted">Senha (mín. 8 caracteres)</span>
               <input
-                className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2"
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 type="password"
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
                 required
               />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-muted">Domínio do painel (opcional)</span>
+              <input
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                value={panelDomain}
+                onChange={(e) => setPanelDomain(e.target.value)}
+                placeholder="painel.suaempresa.com"
+              />
+              <span className="text-xs text-muted">
+                Depois aponte o DNS (registro A) para o IP deste servidor. Sem domínio, use IP:3000 por enquanto.
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={panelUseHttps}
+                onChange={(e) => setPanelUseHttps(e.target.checked)}
+              />
+              Usar HTTPS neste domínio (recomendado)
             </label>
             <button
               type="button"
@@ -166,18 +190,9 @@ export default function SetupPage() {
 
         {step === 2 ? (
           <div className="space-y-4">
-            <label className="block space-y-1 text-sm">
-              <span className="text-muted">License Cloud URL</span>
-              <input
-                className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2 font-mono text-xs"
-                value={licenseServerUrl}
-                onChange={(e) => setLicenseServerUrl(e.target.value)}
-                placeholder="https://license.michaelcampos.com.br"
-              />
-            </label>
             <div className="rounded-card border border-white/80 bg-white/60 p-4 text-sm text-muted">
               <p className="font-medium text-ink">Obter licença free automaticamente</p>
-              <p className="mt-1">Registra seu e-mail no License Cloud e gera a chave `oplic_...`.</p>
+              <p className="mt-1">Usa o e-mail da conta admin para gerar e ativar a chave free.</p>
               <button
                 type="button"
                 className="mt-3 w-full rounded-card bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
@@ -189,14 +204,26 @@ export default function SetupPage() {
             </div>
             <div className="text-center text-xs text-muted">ou cole uma chave existente</div>
             <label className="block space-y-1 text-sm">
-              <span className="text-muted">LICENSE_KEY</span>
+              <span className="text-muted">Chave de licença</span>
               <input
-                className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2 font-mono text-xs"
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 font-mono text-xs focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 value={licenseKey}
                 onChange={(e) => setLicenseKey(e.target.value)}
                 placeholder="oplic_live_..."
               />
             </label>
+            <details className="rounded-card border border-white/80 bg-white/40 p-3 text-sm">
+              <summary className="cursor-pointer text-muted">Opções avançadas</summary>
+              <label className="mt-3 block space-y-1">
+                <span className="text-muted">URL do serviço de licenças</span>
+                <input
+                  className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 font-mono text-xs focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  value={licenseServerUrl}
+                  onChange={(e) => setLicenseServerUrl(e.target.value)}
+                  placeholder="https://license.example.com"
+                />
+              </label>
+            </details>
             <div className="flex gap-2">
               <button type="button" className="rounded-card border px-3 py-2 text-sm" onClick={() => setStep(1)}>
                 Voltar
@@ -218,11 +245,16 @@ export default function SetupPage() {
             <div className="rounded-card border border-white/80 bg-white/60 p-4 space-y-2">
               <p><span className="text-muted">Organização:</span> {orgName}</p>
               <p><span className="text-muted">Admin:</span> {adminEmail}</p>
-              <p><span className="text-muted">License Cloud:</span> {licenseServerUrl || "—"}</p>
+              <p>
+                <span className="text-muted">Domínio do painel:</span>{" "}
+                {panelDomain.trim()
+                  ? `${panelUseHttps ? "https" : "http"}://${panelDomain.trim()}`
+                  : "IP:porta (sem domínio ainda)"}
+              </p>
               <p className="truncate font-mono text-xs"><span className="text-muted">Licença:</span> {licenseKey.slice(0, 20)}…</p>
             </div>
             <p className="text-xs text-muted">
-              Ao concluir, esta instância enviará heartbeat ao License Cloud. Você administra assinantes no portal publisher (:3004).
+              Ao concluir, a licença é ativada nesta instância e você entra no painel.
             </p>
             <div className="flex gap-2">
               <button type="button" className="rounded-card border px-3 py-2 text-sm" onClick={() => setStep(2)}>

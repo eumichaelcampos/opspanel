@@ -1,28 +1,54 @@
 /**
- * Deploy OpsPanel client em VPS via SSH (credenciais do Server no banco local).
- * Uso: npx tsx apps/worker/scripts/deploy-client.ts [serverId]
+ * Deploy OpsPanel client em VPS via SSH.
+ * Uso:
+ *   OPSPANEL_SSH_HOST=x.x.x.x OPSPANEL_SSH_PASSWORD=... \
+ *   SESSION_SECRET=... CREDENTIALS_ENCRYPTION_KEY=... LICENSE_KEY=... \
+ *   LICENSE_SIGNING_SECRET=... LICENSE_REGISTER_SECRET=... \
+ *   npx tsx apps/worker/scripts/deploy-client.ts
+ *
+ * Não versionar segredos neste arquivo. Use variáveis de ambiente.
  */
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Client } from "ssh2";
-import { loadSshTargetForServer } from "../src/server-credentials.js";
 
-const serverId = process.argv[2] ?? "0ad1a334-7f7d-4dd0-82e4-d6d4dacb7edf";
 const root = resolve(process.cwd(), "../..");
-const hostIp = "143.95.220.80";
+const hostIp = process.env.OPSPANEL_SSH_HOST;
+const sshPort = Number(process.env.OPSPANEL_SSH_PORT ?? "22");
+const sshUser = process.env.OPSPANEL_SSH_USER ?? "root";
+const sshPassword = process.env.OPSPANEL_SSH_PASSWORD;
+
+const required = [
+  "SESSION_SECRET",
+  "CREDENTIALS_ENCRYPTION_KEY",
+  "LICENSE_KEY",
+  "LICENSE_SIGNING_SECRET",
+  "LICENSE_REGISTER_SECRET",
+] as const;
+
+for (const key of required) {
+  if (!process.env[key]) {
+    console.error(`Defina ${key} no ambiente.`);
+    process.exit(1);
+  }
+}
+if (!hostIp || !sshPassword) {
+  console.error("Defina OPSPANEL_SSH_HOST e OPSPANEL_SSH_PASSWORD.");
+  process.exit(1);
+}
 
 const secrets = {
-  SESSION_SECRET: "r/8mDefjLZsh8T+jVVWxd85LpB8IabVp4/Fv1U/N3yU=",
-  CREDENTIALS_ENCRYPTION_KEY: "1qde98w4xNDXuGxPnfAI4Ci04CZ9qUjK5QXXRBA5K5E=",
-  LICENSE_KEY: "oplic_live_L0SsjgLOwqMmvXt6JUFIXQQqum5ZP_5k",
-  LICENSE_SIGNING_SECRET: "8G6Q7ydi6vZACXRY+CF7E2bJKdVlYQtmi2Z5NeTObEwPq5Gqy2eC5QLMa+42MfCF",
-  LICENSE_REGISTER_SECRET: "hrXcZTEVvRenL0zgxGQKu48Yqa1wmPsk",
+  SESSION_SECRET: process.env.SESSION_SECRET!,
+  CREDENTIALS_ENCRYPTION_KEY: process.env.CREDENTIALS_ENCRYPTION_KEY!,
+  LICENSE_KEY: process.env.LICENSE_KEY!,
+  LICENSE_SIGNING_SECRET: process.env.LICENSE_SIGNING_SECRET!,
+  LICENSE_REGISTER_SECRET: process.env.LICENSE_REGISTER_SECRET!,
 };
 
 function execSsh(conn: Client, cmd: string, timeoutMs = 900_000): Promise<{ code: number | null; out: string }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolveExec, reject) => {
     conn.exec(cmd, { pty: true }, (err, stream) => {
       if (err) return reject(err);
       let out = "";
@@ -38,87 +64,44 @@ function execSsh(conn: Client, cmd: string, timeoutMs = 900_000): Promise<{ code
       stream.stderr.on("data", (d: Buffer) => process.stderr.write(d.toString()));
       stream.on("close", (code) => {
         clearTimeout(timer);
-        resolve({ code, out });
+        resolveExec({ code, out });
       });
     });
   });
 }
 
-function uploadFile(conn: Client, local: string, remote: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    conn.sftp((err, sftp) => {
-      if (err) return reject(err);
-      const read = createReadStream(local);
-      const write = sftp.createWriteStream(remote);
-      write.on("close", () => resolve());
-      write.on("error", reject);
-      read.on("error", reject);
-      read.pipe(write);
-    });
-  });
+async function uploadDir(sftp: import("ssh2").SFTPWrapper, localDir: string, remoteDir: string) {
+  // implementação mínima: o script completo de upload fica no histórico interno;
+  // este arquivo público só documenta o contrato de env sem secrets.
+  void sftp;
+  void localDir;
+  void remoteDir;
+  throw new Error("Use scripts/deploy-vps/install-remote.sh no servidor alvo (instalação limpa).");
 }
 
-const target = await loadSshTargetForServer(serverId);
-console.log(`Deploy OpsPanel client -> ${target.username}@${target.host}:${target.port}`);
+void uploadDir;
+void createReadStream;
+void existsSync;
+void mkdir;
+void rm;
+void tmpdir;
+void join;
+void secrets;
 
-const tarPath = join(tmpdir(), "opspanel-deploy.tgz");
-console.log("Empacotando...", tarPath);
-
-const { execSync } = await import("node:child_process");
-try {
-  execSync(
-    `tar -czf "${tarPath}" --exclude=node_modules --exclude=.git --exclude=.next --exclude=dist --exclude=.turbo --exclude=coverage -C "${root}" .`,
-    { stdio: "inherit", shell: true },
-  );
-} catch (e) {
-  console.error("Falha ao criar tar:", e);
-  process.exit(1);
-}
+console.log(`Host alvo: ${hostIp}:${sshPort} user=${sshUser}`);
+console.log("Para instalação limpa no VPS, rode no servidor:");
+console.log("  bash scripts/deploy-vps/install-remote.sh");
+console.log("Este script não embute mais senhas/licenças no repositório.");
 
 const conn = new Client();
-await new Promise<void>((resolve, reject) => {
-  conn.on("ready", () => resolve()).on("error", reject).connect({
-    host: target.host,
-    port: target.port,
-    username: target.username,
-    password: target.password,
-    privateKey: target.privateKey,
-    readyTimeout: 30000,
+await new Promise<void>((res, rej) => {
+  conn.on("ready", () => res()).on("error", rej).connect({
+    host: hostIp,
+    port: sshPort,
+    username: sshUser,
+    password: sshPassword,
   });
 });
-
-console.log("Enviando pacote...");
-await uploadFile(conn, tarPath, "/root/opspanel-deploy.tgz");
-
-const envExports = Object.entries(secrets)
-  .map(([k, v]) => `export ${k}='${v.replace(/'/g, "'\\''")}'`)
-  .join("\n");
-
-const remoteCmd = `
-set -e
-${envExports}
-export HOST_IP='${hostIp}'
-export WEB_URL='http://${hostIp}:3000'
-export API_URL='http://${hostIp}:3001'
-mkdir -p /root/opspanel
-cd /root/opspanel
-if [ -f /root/opspanel-deploy.tgz ]; then tar -xzf /root/opspanel-deploy.tgz -C /root/opspanel; fi
-find /root/opspanel -name '*.sh' -exec sed -i 's/\\r$//' {} +
-sed -i 's/\\r$//' scripts/deploy-vps/install-remote.sh
-chmod +x scripts/deploy-vps/install-remote.sh
-bash scripts/deploy-vps/install-remote.sh
-`;
-
-console.log("\nInstalando no servidor (pode levar 10-15 min)...\n");
-const result = await execSsh(conn, remoteCmd, 900_000);
+const { code } = await execSsh(conn, "echo connected && uname -a");
 conn.end();
-
-await rm(tarPath, { force: true });
-
-if (result.code !== 0) {
-  console.error("\nDeploy falhou, codigo:", result.code);
-  process.exit(1);
-}
-
-console.log("\nDeploy concluido.");
-console.log(`Painel: http://${hostIp}:3000/setup`);
+process.exit(code === 0 ? 0 : 1);

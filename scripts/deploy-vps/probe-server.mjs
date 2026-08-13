@@ -1,10 +1,16 @@
 /**
- * Deploy remoto via SSH (usa credenciais do banco local OpsPanel).
+ * Probe remoto via SSH (usa credenciais do banco local OpsPanel).
+ * Uso: node scripts/deploy-vps/probe-server.mjs <serverId>
+ * Não embute IDs nem IPs de cliente.
  */
 import { Client } from "ssh2";
 import { loadSshTargetForServer } from "../../apps/worker/src/server-credentials.js";
 
-const serverId = process.argv[2] ?? "0ad1a334-7f7d-4dd0-82e4-d6d4dacb7edf";
+const serverId = process.argv[2];
+if (!serverId) {
+  console.error("Uso: node scripts/deploy-vps/probe-server.mjs <serverId>");
+  process.exit(1);
+}
 
 function execSsh(conn, cmd) {
   return new Promise((resolve, reject) => {
@@ -12,8 +18,12 @@ function execSsh(conn, cmd) {
       if (err) return reject(err);
       let out = "";
       let errOut = "";
-      stream.on("data", (d) => { out += d; });
-      stream.stderr.on("data", (d) => { errOut += d; });
+      stream.on("data", (d) => {
+        out += d;
+      });
+      stream.stderr.on("data", (d) => {
+        errOut += d;
+      });
       stream.on("close", (code) => resolve({ code, out, errOut }));
     });
   });

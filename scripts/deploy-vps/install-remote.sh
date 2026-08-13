@@ -3,11 +3,23 @@
 set -euo pipefail
 
 OPSPANEL_DIR="${OPSPANEL_DIR:-/root/opspanel}"
-HOST_IP="${HOST_IP:-143.95.220.80}"
+
+# IP público do servidor deste cliente (nunca embutir IP de outro ambiente no repo).
+if [ -z "${HOST_IP:-}" ]; then
+  HOST_IP="$(curl -4 -fsS --max-time 5 ifconfig.me 2>/dev/null || true)"
+fi
+if [ -z "${HOST_IP:-}" ]; then
+  HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+fi
+if [ -z "${HOST_IP:-}" ]; then
+  echo "ERRO: defina HOST_IP=IP.PUBLICO.DO.SERVIDOR" >&2
+  exit 1
+fi
+
 WEB_URL="${WEB_URL:-http://${HOST_IP}:3000}"
 API_URL="${API_URL:-http://${HOST_IP}:3001}"
 
-echo "==> OpsPanel client install em ${OPSPANEL_DIR}"
+echo "==> OpsPanel client install em ${OPSPANEL_DIR} (HOST_IP=${HOST_IP})"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "==> Instalando Docker..."
@@ -66,17 +78,19 @@ echo "API_URL=${API_URL}" > apps/web/.env.local
 echo "NEXT_PUBLIC_GITHUB_REPO=eumichaelcampos/opspanel" >> apps/web/.env.local
 
 echo "==> Postgres + Redis (Docker)"
-sed -i 's/"5432:5432"/"127.0.0.1:5432:5432"/' infra/docker/docker-compose.yml
-sed -i 's/"6379:6379"/"127.0.0.1:6379:6379"/' infra/docker/docker-compose.yml
+# Em VPS, bind só em localhost
+sed -i 's/"5432:5432"/"127.0.0.1:5432:5432"/' infra/docker/docker-compose.yml || true
+sed -i 's/"6379:6379"/"127.0.0.1:6379:6379"/' infra/docker/docker-compose.yml || true
 docker compose -f infra/docker/docker-compose.yml up -d postgres redis
 sleep 8
 
-echo "==> Build OpsPanel"
+echo "==> Build OpsPanel (banco vazio; setup cria a empresa do cliente)"
 find . -name '*.sh' -exec sed -i 's/\r$//' {} +
 set -a
 # shellcheck disable=SC1091
 source ./.env
 set +a
+# Nunca semeia admin/servidores de outro cliente no install de produção
 export SKIP_SEED=1
 bash scripts/install.sh
 
@@ -84,7 +98,10 @@ echo "==> PM2"
 pm2 delete opspanel-api opspanel-worker opspanel-web 2>/dev/null || true
 pm2 start scripts/deploy-vps/ecosystem.config.cjs
 pm2 save
-pm2 startup systemd -u root --hp /root 2>/dev/null | tail -1 | bash || true
+
+echo "==> Boot restart (Docker + PM2 sobrevivem a reboot)"
+chmod +x scripts/opspanel-boot.sh scripts/enable-boot-restart.sh
+bash scripts/enable-boot-restart.sh
 
 echo "==> Firewall (3000/3001)"
 ufw allow 3000/tcp 2>/dev/null || true
