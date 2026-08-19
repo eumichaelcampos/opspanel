@@ -16,6 +16,13 @@ import { QueueModule } from "./queue/queue.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { SitesModule } from "./sites/sites.module";
 import { ServersModule } from "./servers/servers.module";
+import { UserSecretsModule } from "./user-secrets/user-secrets.module";
+import { ChatGptModule } from "./chatgpt/chatgpt.module";
+import { CloudflareModule } from "./cloudflare/cloudflare.module";
+import { SettingsModule } from "./settings/settings.module";
+import { CodexModule } from "./codex/codex.module";
+import { GoogleDriveModule } from "./google-drive/google-drive.module";
+import { EmailModule } from "./email/email.module";
 
 @Module({
   imports: [
@@ -27,6 +34,13 @@ import { ServersModule } from "./servers/servers.module";
     SetupModule,
     UpdatesModule,
     ApiKeysModule,
+    UserSecretsModule,
+    CloudflareModule,
+    SettingsModule,
+    ChatGptModule,
+    CodexModule,
+    GoogleDriveModule,
+    EmailModule,
     AssistantModule,
     ReportsModule,
     OrganizationsModule,

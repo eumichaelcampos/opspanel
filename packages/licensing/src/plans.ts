@@ -1,4 +1,4 @@
-export type PlanTier = "free" | "pro" | "business";
+export type PlanTier = "free" | "pro" | "business" | "full_free";
 
 export type Entitlements = {
   plan: PlanTier;
@@ -7,6 +7,9 @@ export type Entitlements = {
   maxJobsPerMonth: number | null;
   maxApiKeys: number | null;
   maxMembers: number | null;
+  maxMailboxes: number | null;
+  maxEmailDomains: number | null;
+  emailDeliveryMonthly: number | null;
   aiAssistant: boolean;
   mcpEnabled: boolean;
 };
@@ -19,6 +22,9 @@ export const PLAN_ENTITLEMENTS: Record<PlanTier, Entitlements> = {
     maxJobsPerMonth: 100,
     maxApiKeys: 1,
     maxMembers: 2,
+    maxMailboxes: 0,
+    maxEmailDomains: 0,
+    emailDeliveryMonthly: 0,
     aiAssistant: false,
     mcpEnabled: true,
   },
@@ -29,6 +35,9 @@ export const PLAN_ENTITLEMENTS: Record<PlanTier, Entitlements> = {
     maxJobsPerMonth: 5000,
     maxApiKeys: 5,
     maxMembers: 10,
+    maxMailboxes: 3,
+    maxEmailDomains: 3,
+    emailDeliveryMonthly: 5000,
     aiAssistant: true,
     mcpEnabled: true,
   },
@@ -39,6 +48,22 @@ export const PLAN_ENTITLEMENTS: Record<PlanTier, Entitlements> = {
     maxJobsPerMonth: null,
     maxApiKeys: 20,
     maxMembers: null,
+    maxMailboxes: 10,
+    maxEmailDomains: null,
+    emailDeliveryMonthly: 25000,
+    aiAssistant: true,
+    mcpEnabled: true,
+  },
+  full_free: {
+    plan: "full_free",
+    maxServers: null,
+    maxSites: null,
+    maxJobsPerMonth: null,
+    maxApiKeys: null,
+    maxMembers: null,
+    maxMailboxes: 10,
+    maxEmailDomains: null,
+    emailDeliveryMonthly: 25000,
     aiAssistant: true,
     mcpEnabled: true,
   },

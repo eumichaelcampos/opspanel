@@ -39,7 +39,7 @@ export default function LoginPage() {
         <label className="block space-y-1 text-sm">
           <span className="text-muted">E-mail</span>
           <input
-            className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2"
+            className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
@@ -49,7 +49,7 @@ export default function LoginPage() {
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Senha</span>
           <input
-            className="w-full rounded-card border border-white/80 bg-white/90 px-3 py-2"
+            className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"

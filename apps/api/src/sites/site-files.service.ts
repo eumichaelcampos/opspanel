@@ -52,7 +52,8 @@ export class SiteFilesService {
     }
   }
 
-  resolveSiteRoot(domain: string, info?: SiteInfoSnapshot | null): string {
+  /** Diretório base do site no WordOps (/var/www/domain). */
+  resolveSiteBase(domain: string, info?: SiteInfoSnapshot | null): string {
     const webroot = info?.webroot?.replace(/\/+$/, "");
     if (webroot) {
       if (webroot.endsWith("/htdocs")) return webroot.slice(0, -"/htdocs".length);
@@ -61,12 +62,20 @@ export class SiteFilesService {
     return `/var/www/${domain}`;
   }
 
-  resolveSafePath(siteRoot: string, relativePath: string): string {
+  /** Raiz exibida no gerenciador (document root: htdocs quando existir). */
+  resolveSiteRoot(domain: string, info?: SiteInfoSnapshot | null): string {
+    const base = this.resolveSiteBase(domain, info);
+    const webroot = info?.webroot?.replace(/\/+$/, "");
+    if (webroot?.endsWith("/htdocs")) return webroot;
+    return `${base}/htdocs`;
+  }
+
+  resolveSafePath(siteBase: string, relativePath: string): string {
     const clean = relativePath.replace(/\\/g, "/").trim();
     const normalized = posix.normalize(clean.startsWith("/") ? clean : `/${clean}`);
     const relative = normalized.replace(/^\/+/, "");
-    const full = relative ? posix.join(siteRoot, relative) : siteRoot;
-    if (full !== siteRoot && !full.startsWith(`${siteRoot}/`)) {
+    const full = relative ? posix.join(siteBase, relative) : siteBase;
+    if (full !== siteBase && !full.startsWith(`${siteBase}/`)) {
       throw new ForbiddenException({
         error: { code: "PATH_FORBIDDEN", message: "Caminho fora do diretório do site." },
       });
@@ -92,9 +101,11 @@ export class SiteFilesService {
         error: { code: "SSH_NOT_CONFIGURED", message: "Servidor sem credencial SSH configurada." },
       });
     }
-    const siteRoot = this.resolveSiteRoot(site.domain, site.infoSnapshot as SiteInfoSnapshot | null);
+    const info = site.infoSnapshot as SiteInfoSnapshot | null;
+    const siteBase = this.resolveSiteBase(site.domain, info);
+    const siteRoot = this.resolveSiteRoot(site.domain, info);
     const sshTarget = await this.servers.getSshTarget(user, site.server.id);
-    return { site, siteRoot, sshTarget };
+    return { site, siteBase, siteRoot, sshTarget };
   }
 
   private toEntry(siteRoot: string, parentPath: string, name: string, attrs: {

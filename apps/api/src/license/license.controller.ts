@@ -15,11 +15,12 @@ export class LicenseController {
 
   @Get()
   async status() {
-    const [summary, usage] = await Promise.all([
+    const [summary, usage, emailUsage] = await Promise.all([
       this.license.getSummary(),
       this.quotas.getUsageSnapshot(),
+      this.quotas.getEmailUsageSnapshot(),
     ]);
-    return { license: summary, usage };
+    return { license: summary, usage, emailUsage };
   }
 
   @Post("sync")

@@ -65,8 +65,8 @@ export const DEFAULT_SITE_CREATION_DRAFT: SiteCreationDraft = {
   domain: "",
   siteType: "wprocket",
   multisite: "none",
-  phpVersion: "83",
-  sslMode: "letsencrypt_dns_cf",
+  phpVersion: "84",
+  sslMode: "letsencrypt",
   hsts: false,
   ngxblocker: false,
   vhostOnly: false,
@@ -206,14 +206,14 @@ export const SSL_MODE_FRIENDLY: Record<
   WordOpsSslModeId,
   { label: string; desc: string; recommended?: boolean }
 > = {
-  letsencrypt_dns_cf: {
-    label: "Cadeado com Cloudflare (recomendado)",
-    desc: "Use se o domínio passa pela Cloudflare (nuvem laranja ou DNS only).",
+  letsencrypt: {
+    label: "Cadeado direto no servidor (recomendado)",
+    desc: "Validação HTTP (--le). Use se o domínio aponta direto para o IP do servidor.",
     recommended: true,
   },
-  letsencrypt: {
-    label: "Cadeado direto no servidor",
-    desc: "Use se o domínio aponta direto para o IP do servidor, sem Cloudflare.",
+  letsencrypt_dns_cf: {
+    label: "Cadeado com Cloudflare DNS",
+    desc: "Use se o domínio passa pela Cloudflare (nuvem laranja ou DNS only) e você tem a API Key.",
   },
   letsencrypt_wildcard_cf: {
     label: "Cadeado wildcard + Cloudflare",
@@ -271,6 +271,15 @@ export function validateSiteCreationStep(
       if (draft.wpUser.trim().length < 1) {
         return { ok: false, message: "Informe um nome de usuário para o WordPress (ex: admin)." };
       }
+      if (draft.wpPass.trim() && draft.wpPass.trim().length < 8) {
+        return {
+          ok: false,
+          message: "A senha precisa ter pelo menos 8 caracteres, ou deixe em branco para gerar automaticamente.",
+        };
+      }
+      if (draft.wpEmail.trim() && !/^[^\s@]+@[^\s@]+$/.test(draft.wpEmail.trim())) {
+        return { ok: false, message: "Informe um e-mail válido, ou deixe o campo em branco." };
+      }
       return { ok: true };
     case "destination":
       if (draft.siteType === "proxy" && !draft.proxyTarget.trim()) {
@@ -320,9 +329,9 @@ export function buildSiteCreatePayload(draft: SiteCreationDraft) {
     aliasTarget: draft.siteType === "alias" ? draft.aliasTarget : undefined,
     cloudflareApiKey: needsCf ? draft.cfKey : undefined,
     cloudflareEmail: needsCf ? draft.cfEmail : undefined,
-    wpUser: isWp ? draft.wpUser : undefined,
-    wpPass: isWp && draft.wpPass ? draft.wpPass : undefined,
-    wpEmail: isWp && draft.wpEmail ? draft.wpEmail : undefined,
+    wpUser: isWp ? draft.wpUser.trim() || undefined : undefined,
+    wpPass: isWp && draft.wpPass.trim() ? draft.wpPass.trim() : undefined,
+    wpEmail: isWp && draft.wpEmail.trim() ? draft.wpEmail.trim() : undefined,
   };
 }
 

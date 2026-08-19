@@ -66,6 +66,71 @@ export function openInteractiveShell(
   });
 }
 
+export function execSshCommand(
+  target: SshTarget,
+  command: string,
+  options?: { timeoutMs?: number },
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  const client = new Client();
+  const timeoutMs = options?.timeoutMs ?? 60_000;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      client.end();
+      reject(new Error(`SSH command timeout after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+
+    client.on("ready", () => {
+      client.exec(command, {}, (err, stream) => {
+        if (err) {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            client.end();
+            reject(err);
+          }
+          return;
+        }
+
+        let stdout = "";
+        let stderr = "";
+        stream.on("close", (code: number) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          client.end();
+          resolve({ stdout, stderr, code: code ?? 0 });
+        });
+        stream.on("data", (data: Buffer) => {
+          stdout += data.toString();
+        });
+        stream.stderr?.on("data", (data: Buffer) => {
+          stderr += data.toString();
+        });
+      });
+    });
+
+    client.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    client.connect({
+      host: target.host,
+      port: target.port,
+      username: target.username,
+      privateKey: target.privateKey,
+      password: target.password,
+      readyTimeout: 15_000,
+    });
+  });
+}
+
 export function formatSshError(err: unknown, target: SshTarget): string {
   const detail = err instanceof Error ? err.message : String(err);
   if (/timed out|timeout|ETIMEDOUT/i.test(detail)) {

@@ -1,15 +1,29 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Activity, Database, FolderOpen, Settings2, ShieldAlert, Upload, Users } from "lucide-react";
+import { Activity, Archive, Cloud, Database, FolderOpen, Globe, Mail, ShieldAlert, Users, Wrench } from "lucide-react";
 
-export type SiteDetailTab = "overview" | "files" | "database" | "ops" | "access" | "danger";
+export type SiteDetailTab =
+  | "overview"
+  | "files"
+  | "database"
+  | "ops"
+  | "backup"
+  | "domain"
+  | "cloudflare"
+  | "email"
+  | "access"
+  | "danger";
 
 const TABS: { id: SiteDetailTab; label: string; icon: typeof Activity }[] = [
   { id: "overview", label: "Visão geral", icon: Activity },
   { id: "files", label: "Arquivos", icon: FolderOpen },
   { id: "database", label: "Banco", icon: Database },
-  { id: "ops", label: "Ops & backup", icon: Settings2 },
+  { id: "ops", label: "Ajustes", icon: Wrench },
+  { id: "backup", label: "Backup", icon: Archive },
+  { id: "domain", label: "Domínio", icon: Globe },
+  { id: "cloudflare", label: "Cloudflare", icon: Cloud },
+  { id: "email", label: "E-mail", icon: Mail },
   { id: "access", label: "FTP", icon: Users },
   { id: "danger", label: "Excluir", icon: ShieldAlert },
 ];

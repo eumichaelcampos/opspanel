@@ -25,11 +25,14 @@ export function ServerAccessPanel({
 }) {
   const qc = useQueryClient();
   const [testJobId, setTestJobId] = useState<string | null>(null);
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isPending, isFetching, isError, error } = useQuery({
     queryKey: ["server-credential", serverId],
     queryFn: () => apiFetch<ServerCredential>(`/servers/${serverId}/credential`),
     enabled,
     staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const [editPort, setEditPort] = useState<string | null>(null);
@@ -89,11 +92,15 @@ export function ServerAccessPanel({
         </p>
       ) : null}
 
-      {isLoading ? (
+      {isPending && !data ? (
         <p className="flex items-center gap-2 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           Carregando credenciais…
         </p>
+      ) : null}
+
+      {isFetching && data ? (
+        <p className="text-[11px] text-muted">Atualizando credenciais…</p>
       ) : null}
 
       {isError ? <p className="text-sm text-danger">{(error as Error).message}</p> : null}
@@ -113,7 +120,7 @@ export function ServerAccessPanel({
                 max={65535}
                 value={displayPort}
                 onChange={(e) => setEditPort(e.target.value)}
-                className="w-24 rounded border border-white/80 bg-white/90 px-2 py-1 font-mono text-xs"
+                className="w-24 rounded border border-ink/20 bg-white/90 px-2 py-1 font-mono text-xs focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
               {editPort != null && editPort !== String(data.port) ? (
                 <button

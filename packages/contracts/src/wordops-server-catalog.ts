@@ -18,6 +18,7 @@ export const WORDOPS_STACK_COMPONENTS = [
   { id: "php81", label: "PHP 8.1", flag: "--php81", category: "web" },
   { id: "php82", label: "PHP 8.2", flag: "--php82", category: "web" },
   { id: "php83", label: "PHP 8.3", flag: "--php83", category: "web" },
+  { id: "php84", label: "PHP 8.4", flag: "--php84", category: "web" },
   { id: "mysql", label: "MariaDB", flag: "--mysql", category: "web" },
   { id: "redis", label: "Redis", flag: "--redis", category: "web" },
   { id: "wpcli", label: "WP-CLI", flag: "--wpcli", category: "web" },

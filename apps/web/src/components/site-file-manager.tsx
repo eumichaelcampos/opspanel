@@ -14,11 +14,12 @@ import {
   FolderPlus,
   Home,
   Loader2,
+  Pencil,
   RefreshCw,
   Trash2,
   Upload,
 } from "lucide-react";
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch, apiDownload, apiUpload } from "@/lib/api";
 
 type FileEntry = {
   name: string;
@@ -65,7 +66,7 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
   const uploadRef = useRef<HTMLInputElement>(null);
   const [currentPath, setCurrentPath] = useState("");
   const [editor, setEditor] = useState<{ path: string; content: string; name: string } | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ text: string; type: "info" | "error" | "success" } | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
   const listQuery = useQuery({
@@ -81,12 +82,12 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
     mutationFn: (path: string) => apiFetch<{ content: string; encoding: string }>(`/sites/${siteId}/files/content?path=${encodeURIComponent(path)}`),
     onSuccess: (data, path) => {
       if (data.encoding === "base64") {
-        setMsg("Arquivo binário; use download.");
+        setMsg({ text: "Arquivo binário; use download.", type: "info" });
         return;
       }
       setEditor({ path, content: data.content, name: path.split("/").pop() ?? path });
     },
-    onError: (err: Error) => setMsg(err.message),
+    onError: (err: Error) => setMsg({ text: err.message, type: "error" }),
   });
 
   const saveEditor = useMutation({
@@ -96,11 +97,11 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
         body: JSON.stringify({ path: editor!.path, content: editor!.content }),
       }),
     onSuccess: () => {
-      setMsg("Arquivo salvo.");
+      setMsg({ text: "Arquivo salvo.", type: "success" });
       setEditor(null);
       refresh();
     },
-    onError: (err: Error) => setMsg(err.message),
+    onError: (err: Error) => setMsg({ text: err.message, type: "error" }),
   });
 
   const mkdir = useMutation({
@@ -110,20 +111,33 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
         body: JSON.stringify({ path: currentPath ? `${currentPath}/${name}` : name }),
       }),
     onSuccess: () => {
-      setMsg("Pasta criada.");
+      setMsg({ text: "Pasta criada.", type: "success" });
       refresh();
     },
-    onError: (err: Error) => setMsg(err.message),
+    onError: (err: Error) => setMsg({ text: err.message, type: "error" }),
   });
 
   const remove = useMutation({
     mutationFn: (path: string) =>
       apiFetch(`/sites/${siteId}/files?path=${encodeURIComponent(path)}`, { method: "DELETE" }),
     onSuccess: () => {
-      setMsg("Excluído.");
+      setMsg({ text: "Excluído.", type: "success" });
       refresh();
     },
-    onError: (err: Error) => setMsg(err.message),
+    onError: (err: Error) => setMsg({ text: err.message, type: "error" }),
+  });
+
+  const renameEntry = useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) =>
+      apiFetch(`/sites/${siteId}/files/rename`, {
+        method: "PATCH",
+        body: JSON.stringify({ from, to }),
+      }),
+    onSuccess: () => {
+      setMsg({ text: "Renomeado.", type: "success" });
+      refresh();
+    },
+    onError: (err: Error) => setMsg({ text: err.message, type: "error" }),
   });
 
   const uploadFiles = useMutation({
@@ -132,22 +146,14 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
         const form = new FormData();
         form.append("file", file);
         form.append("path", currentPath);
-        const res = await fetch(apiUrl(`/sites/${siteId}/files/upload`), {
-          method: "POST",
-          credentials: "include",
-          body: form,
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text.includes("message") ? JSON.parse(text).error?.message : "Falha no upload");
-        }
+        await apiUpload(`/sites/${siteId}/files/upload`, form);
       }
     },
     onSuccess: () => {
-      setMsg("Upload concluído.");
+      setMsg({ text: "Upload concluído.", type: "success" });
       refresh();
     },
-    onError: (err: Error) => setMsg(err.message),
+    onError: (err: Error) => setMsg({ text: err.message, type: "error" }),
   });
 
   const breadcrumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
@@ -157,14 +163,30 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
     setMsg(null);
   };
 
-  const downloadFile = (path: string) => {
-    window.open(apiUrl(`/sites/${siteId}/files/download?path=${encodeURIComponent(path)}`), "_blank");
+  const downloadFile = async (path: string, name: string) => {
+    try {
+      await apiDownload(`/sites/${siteId}/files/download?path=${encodeURIComponent(path)}`, name);
+    } catch (err) {
+      setMsg({ text: err instanceof Error ? err.message : "Falha no download", type: "error" });
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     if (e.dataTransfer.files.length) uploadFiles.mutate(e.dataTransfer.files);
+  };
+
+  const promptRename = (entry: FileEntry) => {
+    const newName = window.prompt(`Renomear "${entry.name}" para:`, entry.name);
+    if (!newName?.trim() || newName.trim() === entry.name) return;
+    if (newName.includes("/") || newName.includes("\\")) {
+      setMsg({ text: "Nome inválido (sem barras).", type: "error" });
+      return;
+    }
+    const parent = entry.path.includes("/") ? entry.path.slice(0, entry.path.lastIndexOf("/")) : "";
+    const to = parent ? `${parent}/${newName.trim()}` : newName.trim();
+    renameEntry.mutate({ from: entry.path, to });
   };
 
   const siteRootDisplay = listQuery.data?.siteRoot ?? webroot?.replace(/\/htdocs\/?$/, "") ?? `/var/www/${domain}`;
@@ -210,7 +232,7 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
             ref={uploadRef}
             type="file"
             multiple
-            className="hidden"
+            className="hidden focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
             onChange={(e) => e.target.files && uploadFiles.mutate(e.target.files)}
           />
         </div>
@@ -301,6 +323,15 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
                     <td className="hidden px-3 py-2 text-xs text-muted md:table-cell">{formatDate(entry.modifiedAt)}</td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          title="Renomear"
+                          disabled={renameEntry.isPending}
+                          onClick={() => promptRename(entry)}
+                          className="rounded p-1 text-muted hover:bg-white/10 hover:text-accent"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
                         {!entry.isDirectory && isEditable(entry.name) ? (
                           <button
                             type="button"
@@ -315,7 +346,7 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
                           <button
                             type="button"
                             title="Download"
-                            onClick={() => downloadFile(entry.path)}
+                            onClick={() => void downloadFile(entry.path, entry.name)}
                             className="rounded p-1 text-muted hover:bg-white/10 hover:text-accent"
                           >
                             <Download className="h-3.5 w-3.5" />
@@ -351,10 +382,14 @@ export function SiteFileManager({ siteId, domain, webroot }: { siteId: string; d
       {dragOver ? (
         <p className="text-center text-xs text-accent">Solte os arquivos para enviar</p>
       ) : (
-        <p className="text-[11px] text-muted">Arraste arquivos para upload · duplo clique em pastas para abrir · máx. 50 MB por arquivo</p>
+        <p className="text-[11px] text-muted">Arraste arquivos para upload · duplo clique em pastas · renomear, editar ou excluir · máx. 50 MB por arquivo</p>
       )}
 
-      {msg ? <p className="text-xs text-muted">{msg}</p> : null}
+      {msg ? (
+        <p className={`text-xs ${msg.type === "error" ? "text-danger" : msg.type === "success" ? "text-success" : "text-muted"}`}>
+          {msg.text}
+        </p>
+      ) : null}
 
       {editor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

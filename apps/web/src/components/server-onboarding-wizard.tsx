@@ -3,6 +3,8 @@
 import type { OnboardingOperation, OnboardingStepId, ResolvedOnboardingStep, StackInventoryItem } from "@opspanel/contracts";
 import { resolveExistingServerInventory } from "@opspanel/contracts";
 import { apiFetch } from "@/lib/api";
+import { importExistingWordOps, type BootstrapStep } from "@/lib/server-bootstrap";
+import { JobTracker } from "@/components/job-tracker";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -240,6 +242,25 @@ function ExistingServerPanel({
 }) {
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncAllBusy, setSyncAllBusy] = useState(false);
+  const [syncAllStep, setSyncAllStep] = useState<BootstrapStep | null>(null);
+
+  async function runSyncEverything() {
+    setError(null);
+    setSyncAllBusy(true);
+    setSyncAllStep({ key: "start", label: "Sincronizando servidor, stack e sites…" });
+    try {
+      await importExistingWordOps(serverId, (step) => {
+        setSyncAllStep(step);
+        if (step.jobId) onJobStarted(step.jobId, step.key === "sync" ? "sync_inventory" : null);
+      });
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao sincronizar tudo");
+    } finally {
+      setSyncAllBusy(false);
+    }
+  }
 
   async function runHealthCollect() {
     setError(null);
@@ -305,6 +326,27 @@ function ExistingServerPanel({
         >
           Criar site
         </Link>
+      </div>
+
+      <div className="rounded-card border border-accent/30 bg-accent/5 px-4 py-3">
+        <p className="font-medium text-ink">Reconhecer este servidor no painel</p>
+        <p className="mt-1 text-sm text-muted">
+          Atualiza a stack, importa os sites existentes e deixa o servidor visível em Servidores e Sites.
+        </p>
+        <button
+          type="button"
+          disabled={Boolean(activeJobId) || syncAllBusy}
+          onClick={() => void runSyncEverything()}
+          className="mt-3 rounded-card bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {syncAllBusy ? "Sincronizando…" : "Sincronizar tudo"}
+        </button>
+        {syncAllBusy && syncAllStep ? (
+          <div className="mt-3 space-y-2">
+            <p className="text-sm text-muted">{syncAllStep.label}</p>
+            {syncAllStep.jobId ? <JobTracker jobId={syncAllStep.jobId} /> : null}
+          </div>
+        ) : null}
       </div>
 
       {inventory.needsHealthScan ? (

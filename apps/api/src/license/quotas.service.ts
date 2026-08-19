@@ -128,6 +128,45 @@ export class QuotasService {
     }
   }
 
+  async getEmailUsageSnapshot() {
+    const entitlements = await this.license.getEntitlements();
+    const [mailboxes, emailDomains] = await Promise.all([
+      this.prisma.client.emailMailbox.count(),
+      this.prisma.client.emailDomain.count(),
+    ]);
+    return {
+      plan: entitlements.plan,
+      usage: { mailboxes, email_domains: emailDomains },
+      limits: {
+        mailboxes: entitlements.maxMailboxes,
+        email_domains: entitlements.maxEmailDomains,
+        email_delivery_monthly: entitlements.emailDeliveryMonthly,
+      },
+    };
+  }
+
+  async assertCanCreateMailbox() {
+    const snap = await this.getEmailUsageSnapshot();
+    if (!isWithinLimit(snap.usage.mailboxes, snap.limits.mailboxes)) {
+      this.quotaError("QUOTA_EXCEEDED", "Limite de caixas de e-mail do plano atingido.", {
+        limit: snap.limits.mailboxes,
+        usage: snap.usage.mailboxes,
+        plan: snap.plan,
+      });
+    }
+  }
+
+  async assertCanCreateEmailDomain() {
+    const snap = await this.getEmailUsageSnapshot();
+    if (!isWithinLimit(snap.usage.email_domains, snap.limits.email_domains)) {
+      this.quotaError("QUOTA_EXCEEDED", "Limite de domínios de e-mail do plano atingido.", {
+        limit: snap.limits.email_domains,
+        usage: snap.usage.email_domains,
+        plan: snap.plan,
+      });
+    }
+  }
+
   async incrementMetric(metric: UsageMetric, amount = 1) {
     const period = currentPeriod();
     await this.prisma.client.usageCounter.upsert({

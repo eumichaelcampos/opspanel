@@ -8,7 +8,7 @@ export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}
 
   @Get("overview")
-  overview(@CurrentUser() user: SessionUser) {
+  overview(@CurrentUser() user: SessionUser): Promise<Awaited<ReturnType<DashboardService["getOverview"]>>> {
     return this.dashboard.getOverview(user);
   }
 }

@@ -100,7 +100,7 @@ export default function ServerDetailPageInner() {
   const [selectedComponents, setSelectedComponents] = useState<string[]>(["fail2ban"]);
   const [activeTab, setActiveTab] = useState<ServerDetailTab>("overview");
 
-  const { data: server, isLoading, isError, error } = useQuery({
+  const { data: server, isPending, isError, error } = useQuery({
     queryKey: ["server", serverId],
     queryFn: () => apiFetch<ServerDetail>(`/servers/${serverId}`),
     enabled: Boolean(serverId),
@@ -152,7 +152,6 @@ export default function ServerDetailPageInner() {
     healthObservedAt: server?.healthObservedAt,
     metricsObservedAt: server?.metricsObservedAt,
     activeJobId,
-    onJobStarted: (jobId) => setActiveJobId(jobId),
   });
 
   useEffect(() => {
@@ -238,6 +237,8 @@ export default function ServerDetailPageInner() {
     mutationFn: () => apiFetch<{ ok: boolean }>(`/servers/${serverId}`, { method: "DELETE" }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["servers"] });
+      void qc.invalidateQueries({ queryKey: ["sites"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-overview"] });
       router.push("/servers");
     },
   });
@@ -245,7 +246,7 @@ export default function ServerDetailPageInner() {
   function handleRemoveServer() {
     if (
       !window.confirm(
-        `Remover "${server?.name}" do painel?\n\nO servidor físico/VPS não será apagado. Apenas deixa de aparecer na listagem.`,
+        `Remover "${server?.name}" do painel?\n\nO servidor físico/VPS não será apagado. Os sites vinculados a ele também saem da listagem do painel.`,
       )
     ) {
       return;
@@ -296,7 +297,7 @@ export default function ServerDetailPageInner() {
 
   return (
     <AppShell title={server?.name ?? "Servidor"}>
-      {isLoading ? <p className="text-muted">Carregando...</p> : null}
+      {isPending ? <p className="text-muted">Carregando...</p> : null}
       {isError ? (
         <div className="rounded-card border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {(error as Error).message}
@@ -635,23 +636,44 @@ export default function ServerDetailPageInner() {
 
           {activeTab === "sites" ? (
             <section className="glass-card p-4">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Sites neste servidor</h2>
-                <Link href={`/sites/new?serverId=${server.id}`} className="text-sm text-accent hover:underline">
-                  Criar site
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`/sites?serverId=${server.id}`} className="btn-secondary btn-sm">
+                    Ver listagem
+                  </Link>
+                  <Link href={`/sites/new?serverId=${server.id}`} className="btn-primary btn-sm">
+                    Criar site
+                  </Link>
+                </div>
               </div>
               {sitesData?.sites.length ? (
-                <ul className="space-y-1">
+                <ul className="space-y-2">
                   {sitesData.sites.map((s) => (
-                    <li key={s.id}>
-                      <Link
-                        href={`/sites/${s.id}`}
-                        className="flex items-center justify-between rounded-card bg-white/80 px-3 py-2 hover:bg-white"
-                      >
-                        <span>{s.domain}</span>
+                    <li
+                      key={s.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-white/80 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{s.domain}</p>
                         <StatusBadge status={s.status} />
-                      </Link>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Link href={`/sites/${s.id}`} className="btn-primary btn-sm">
+                          Ver
+                        </Link>
+                        <Link href={`/sites/${s.id}?tab=ops`} className="btn-secondary btn-sm">
+                          Editar
+                        </Link>
+                        <a
+                          href={`https://${s.domain}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-accent-outline btn-sm"
+                        >
+                          Abrir
+                        </a>
+                      </div>
                     </li>
                   ))}
                 </ul>

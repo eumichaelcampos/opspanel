@@ -54,6 +54,54 @@ body {
   }
 }
 
+@layer components {
+  /* Controles de formulário: borda sempre legível no fundo claro do painel */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    border-width: 1px;
+    border-style: solid;
+    /* Ganha de border-white/* dos utilitários: inputs precisam de contraste no fundo claro */
+    border-color: rgb(22 34 55 / 0.22) !important;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]):not([type="range"]):not([type="color"]):focus,
+  textarea:focus,
+  select:focus {
+    border-color: rgb(201 109 58 / 0.55) !important;
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(201 109 58 / 0.18);
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card px-3 py-1.5 text-sm font-medium transition disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-ink/15 bg-white/80 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-white disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-accent-outline {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-accent/30 bg-white/80 px-3 py-1.5 text-sm font-medium text-accent transition hover:bg-accent/5 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-transparent bg-transparent px-3 py-1.5 text-sm font-medium text-muted transition hover:bg-white/70 hover:text-ink disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-danger/30 bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition hover:bg-danger/15 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-sm {
+    @apply px-2.5 py-1 text-xs;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

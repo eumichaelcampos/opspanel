@@ -1,6 +1,6 @@
 /** Allowlisted remote probes (argv arrays, never shell strings). */
 export const WO_VERSION_SHELL =
-  "(command -v wo >/dev/null && (wo --version 2>/dev/null || wo version 2>/dev/null)) || (/usr/local/bin/wo --version 2>/dev/null || /usr/local/bin/wo version 2>/dev/null || true)";
+  "(command -v wo >/dev/null && wo --version 2>/dev/null | head -1) || (/usr/local/bin/wo --version 2>/dev/null | head -1 || true)";
 
 export const RemoteProbes = {
   osRelease: ["cat", "/etc/os-release"],

@@ -5,7 +5,22 @@ import { useState } from "react";
 import { SetupRedirect } from "@/components/setup-redirect";
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [client] = useState(() => new QueryClient());
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30_000,
+            refetchOnWindowFocus: false,
+            retry: (failureCount, error) => {
+              const msg = error instanceof Error ? error.message : "";
+              if (msg.includes("Sessão inválida")) return false;
+              return failureCount < 2;
+            },
+          },
+        },
+      }),
+  );
   return (
     <QueryClientProvider client={client}>
       <SetupRedirect>{children}</SetupRedirect>

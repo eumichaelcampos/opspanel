@@ -32,6 +32,14 @@ export class SiteFilesController {
     }
   }
 
+  private assertWrite(user: SessionUser) {
+    try {
+      this.sites.assertWrite(user);
+    } catch {
+      throw new ForbiddenException({ error: { code: "FORBIDDEN", message: "Permissão insuficiente para alterar arquivos." } });
+    }
+  }
+
   @Get()
   list(
     @CurrentUser() user: SessionUser,
@@ -77,7 +85,7 @@ export class SiteFilesController {
     @Param("siteId") siteId: string,
     @Req() req: FastifyRequest,
   ) {
-    this.assertRead(user);
+    this.assertWrite(user);
     let dir = "";
     let filename = "";
     let buffer: Buffer | null = null;
@@ -105,7 +113,7 @@ export class SiteFilesController {
     @Body() body: { path: string },
     @Req() req: FastifyRequest,
   ) {
-    this.assertRead(user);
+    this.assertWrite(user);
     return this.files.mkdir(user, siteId, body.path, req.ip);
   }
 
@@ -116,7 +124,7 @@ export class SiteFilesController {
     @Body() body: { path: string; content: string },
     @Req() req: FastifyRequest,
   ) {
-    this.assertRead(user);
+    this.assertWrite(user);
     return this.files.saveContent(user, siteId, body.path, body.content, req.ip);
   }
 
@@ -127,7 +135,7 @@ export class SiteFilesController {
     @Body() body: { from: string; to: string },
     @Req() req: FastifyRequest,
   ) {
-    this.assertRead(user);
+    this.assertWrite(user);
     return this.files.rename(user, siteId, body.from, body.to, req.ip);
   }
 
@@ -138,7 +146,7 @@ export class SiteFilesController {
     @Query("path") path: string,
     @Req() req: FastifyRequest,
   ) {
-    this.assertRead(user);
+    this.assertWrite(user);
     if (!path) throw new ForbiddenException({ error: { code: "VALIDATION_ERROR", message: "Informe path." } });
     return this.files.delete(user, siteId, path, req.ip);
   }

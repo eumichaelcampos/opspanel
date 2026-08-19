@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Server,
   Globe,
+  Mail,
   ListTodo,
   Shield,
   LogOut,
@@ -14,8 +15,6 @@ import {
   Plus,
   BarChart3,
   Bot,
-  CreditCard,
-  Settings,
   User,
 } from "lucide-react";
 import { UpdateNotification } from "@/components/update-notification";
@@ -26,6 +25,7 @@ const mainNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/servers", label: "Servidores", icon: Server },
   { href: "/sites", label: "Sites", icon: Globe },
+  { href: "/email", label: "E-mail", icon: Mail },
   { href: "/reports", label: "Relatórios", icon: BarChart3 },
   { href: "/assistant", label: "Assistente IA", icon: Bot },
 ];
@@ -35,11 +35,7 @@ const opsNav = [
   { href: "/audit", label: "Auditoria", icon: Shield },
 ];
 
-const settingsNav = [
-  { href: "/settings/profile", label: "Perfil", icon: User },
-  { href: "/settings/plan", label: "Plano e uso", icon: CreditCard },
-  { href: "/settings/account", label: "Conta & API", icon: Settings },
-];
+const settingsNav = [{ href: "/settings", label: "Conta", icon: User }];
 
 function initials(email?: string, name?: string | null): string {
   if (name?.trim()) return name.trim().slice(0, 2).toUpperCase();
@@ -104,7 +100,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
       /* encerra sessão local mesmo se a API falhar */
     }
     qc.clear();
-    window.location.href = "/login";
+    window.location.href = "/login?logout=1";
   }
 
   const isDashboard = pathname === "/dashboard";

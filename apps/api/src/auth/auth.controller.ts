@@ -12,6 +12,7 @@ import {
 } from "@nestjs/common";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { loadEnv } from "@opspanel/config";
 import { AuditService } from "../audit/audit.service";
 import { AuthGuard, CurrentUser, SESSION_COOKIE } from "./auth.guard";
 import { AuthService, SessionUser } from "./auth.service";
@@ -53,11 +54,13 @@ export class AuthController {
       });
     }
 
+    const cookieSecure = loadEnv().WEB_URL.startsWith("https://");
+
     res.setCookie(SESSION_COOKIE, result.token, {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
-      secure: process.env.NODE_ENV === "production",
+      secure: cookieSecure,
       maxAge: 60 * 60 * 24 * 7,
     });
 
@@ -75,15 +78,15 @@ export class AuthController {
   }
 
   @Post("logout")
-  @UseGuards(AuthGuard)
   async logout(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
     const token = req.cookies?.[SESSION_COOKIE];
     if (token) await this.auth.logout(token);
+    const cookieSecure = loadEnv().WEB_URL.startsWith("https://");
     res.clearCookie(SESSION_COOKIE, {
       path: "/",
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: cookieSecure,
     });
     return { ok: true };
   }

@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { AppShell } from "@/components/app-shell";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Check, CreditCard, ExternalLink, KeyRound, RefreshCw } from "lucide-react";
@@ -29,6 +28,10 @@ type LicenseResponse = {
     plan: string;
     usage: Record<string, number>;
     limits: Record<string, number | null>;
+  };
+  emailUsage?: {
+    usage: { mailboxes: number; email_domains: number };
+    limits: { mailboxes: number | null; email_domains: number | null; email_delivery_monthly: number | null };
   };
 };
 
@@ -153,8 +156,7 @@ export default function PlanSettingsPage() {
   const visiblePlans = billingPlans?.plans.filter((p) => CLIENT_VISIBLE_PLANS.has(p.id)) ?? [];
 
   return (
-    <AppShell title="Plano e uso">
-      <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
         {billingResult === "success" ? (
           <p className="rounded-card border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-ink">
             Pagamento recebido. Sincronizando licença…
@@ -349,6 +351,20 @@ export default function PlanSettingsPage() {
               <UsageBar label="Jobs (mês)" used={data.usage.usage.jobs_month ?? 0} limit={data.usage.limits.jobs_month} />
               <UsageBar label="API keys" used={data.usage.usage.api_keys ?? 0} limit={data.usage.limits.api_keys} />
               <UsageBar label="Membros" used={data.usage.usage.members ?? 0} limit={data.usage.limits.members} />
+              {data.emailUsage ? (
+                <>
+                  <UsageBar
+                    label="Caixas de e-mail"
+                    used={data.emailUsage.usage.mailboxes}
+                    limit={data.emailUsage.limits.mailboxes}
+                  />
+                  <UsageBar
+                    label="Domínios de e-mail"
+                    used={data.emailUsage.usage.email_domains}
+                    limit={data.emailUsage.limits.email_domains}
+                  />
+                </>
+              ) : null}
             </section>
 
             <section className="glass-card p-6 text-sm text-muted">
@@ -361,7 +377,6 @@ export default function PlanSettingsPage() {
             </section>
           </>
         ) : null}
-      </div>
-    </AppShell>
+    </div>
   );
 }

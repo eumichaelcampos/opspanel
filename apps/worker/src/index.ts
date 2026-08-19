@@ -6,7 +6,7 @@ config({ path: resolve(process.cwd(), "../../.env"), override: true });
 
 
 
-import { Worker } from "bullmq";
+import { Worker, Queue } from "bullmq";
 
 import { Redis } from "ioredis";
 
@@ -31,12 +31,21 @@ import { fetchSiteList, testSshConnection } from "./ssh-executor.js";
 import {
   processSiteCreate,
   processSiteFtpUserCreate,
+  processSiteFtpUserDelete,
   processSiteInfo,
   processSiteManage,
   processSiteBackup,
+  processSiteRestore,
   processSiteDelete,
   processSiteUpdateDomain,
 } from "./site-processors.js";
+import { processSiteMigrateFtp } from "./site-migrate-ftp.js";
+import {
+  processSiteEmailDomainProvision,
+  processSiteEmailHealthCheck,
+  processSiteEmailMailboxCreate,
+  processSiteEmailMailboxDelete,
+} from "./email-processors.js";
 import {
   processServerHealthCollect,
   processServerMaintenance,
@@ -51,6 +60,8 @@ import {
   processServerStackRestart,
   refreshServerHealthFromServer,
 } from "./server-processors.js";
+import { startBackupScheduler } from "./backup-scheduler.js";
+
 async function processConnectionTest(jobId: string) {
 
   const job = await claimJob(jobId);
@@ -601,6 +612,14 @@ async function main() {
 
         }
 
+        if (record.operationKey === OperationKeys.SiteRestore) {
+
+          await processSiteRestore(jobId);
+
+          return;
+
+        }
+
         if (record.operationKey === OperationKeys.SiteDelete) {
 
           await processSiteDelete(jobId);
@@ -623,6 +642,42 @@ async function main() {
 
           return;
 
+        }
+
+        if (record.operationKey === OperationKeys.SiteFtpUserDelete) {
+
+          await processSiteFtpUserDelete(jobId);
+
+          return;
+
+        }
+
+        if (record.operationKey === OperationKeys.SiteMigrateFtp) {
+
+          await processSiteMigrateFtp(jobId);
+
+          return;
+
+        }
+
+        if (record.operationKey === OperationKeys.SiteEmailDomainProvision) {
+          await processSiteEmailDomainProvision(jobId);
+          return;
+        }
+
+        if (record.operationKey === OperationKeys.SiteEmailMailboxCreate) {
+          await processSiteEmailMailboxCreate(jobId);
+          return;
+        }
+
+        if (record.operationKey === OperationKeys.SiteEmailMailboxDelete) {
+          await processSiteEmailMailboxDelete(jobId);
+          return;
+        }
+
+        if (record.operationKey === OperationKeys.SiteEmailHealthCheck) {
+          await processSiteEmailHealthCheck(jobId);
+          return;
         }
 
 
@@ -655,7 +710,7 @@ async function main() {
 
     },
 
-    { connection, concurrency: 1 },
+    { connection, concurrency: 1, lockDuration: 3_600_000, stalledInterval: 300_000, maxStalledCount: 3 },
 
   );
 
@@ -671,6 +726,9 @@ async function main() {
 
   logger.info("Worker started");
 
+  const queueConnection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+  const operationsQueue = new Queue(OPERATIONS_QUEUE, { connection: queueConnection });
+  startBackupScheduler(operationsQueue);
 }
 
 

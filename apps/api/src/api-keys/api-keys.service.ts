@@ -3,6 +3,7 @@ import { OrgRole } from "@opspanel/database";
 import { AuditService } from "../audit/audit.service";
 import { SessionUser } from "../auth/auth.service";
 import { generateApiKey } from "../auth/api-key.guard";
+import { QuotasService } from "../license/quotas.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -10,6 +11,7 @@ export class ApiKeysService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly quotas: QuotasService,
   ) {}
 
   private assertAdmin(user: SessionUser) {
@@ -30,6 +32,7 @@ export class ApiKeysService {
 
   async create(user: SessionUser, name: string, ip?: string) {
     this.assertAdmin(user);
+    await this.quotas.assertCanCreateApiKey();
     const trimmed = name.trim();
     if (trimmed.length < 2) {
       throw new ForbiddenException({ error: { code: "VALIDATION_ERROR", message: "Nome da chave inválido." } });

@@ -5,6 +5,7 @@ import { hashPassword } from "@opspanel/security";
 import { PrismaService } from "../prisma/prisma.service";
 import { LicenseService } from "../license/license.service";
 import { LicenseCloudClient } from "../license/license-cloud.client";
+import { patchPanelUrls } from "../license/env-file";
 
 export type SetupStatus = {
   needsSetup: boolean;
@@ -14,6 +15,17 @@ export type SetupStatus = {
   cloudConfigured: boolean;
   licenseServerUrl: string | null;
 };
+
+const domainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+
+function normalizeDomain(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.$/, "");
+}
 
 @Injectable()
 export class SetupService {
@@ -91,6 +103,8 @@ export class SetupService {
     adminName?: string;
     licenseKey: string;
     licenseServerUrl?: string;
+    panelDomain?: string;
+    panelUseHttps?: boolean;
   }) {
     const status = await this.getStatus();
     if (!status.needsSetup && status.completed) {
@@ -166,15 +180,37 @@ export class SetupService {
       await this.license.syncWithCloud("activate").catch(() => undefined);
     }
 
+    let panelDomain: string | null = null;
+    let panelUrl: string | null = null;
+    if (input.panelDomain?.trim()) {
+      const domain = normalizeDomain(input.panelDomain);
+      if (!domainRegex.test(domain)) {
+        throw new BadRequestException({
+          error: { code: "INVALID_DOMAIN", message: "Domínio do painel inválido." },
+        });
+      }
+      const useHttps = input.panelUseHttps !== false;
+      panelDomain = domain;
+      panelUrl = `${useHttps ? "https" : "http"}://${domain}`;
+      patchPanelUrls(panelUrl, panelUrl);
+    }
+
     await this.prisma.client.systemSetupState.update({
       where: { id: "default" },
-      data: { completed: true, completedAt: new Date() },
+      data: {
+        completed: true,
+        completedAt: new Date(),
+        panelDomain,
+        panelUrl,
+      },
     });
 
     return {
       ok: true,
       organization: { id: org.id, name: org.name, slug: org.slug },
       admin: { email: user.email },
+      panelDomain,
+      panelUrl,
     };
   }
 }

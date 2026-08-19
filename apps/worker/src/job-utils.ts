@@ -43,7 +43,8 @@ export async function claimJob(jobId: string) {
 
   if (job.status === JobStatus.running && job.startedAt) {
     const staleMs = Date.now() - job.startedAt.getTime();
-    if (staleMs < 5 * 60 * 1000) {
+    const staleLimitMs = 20 * 60 * 1000;
+    if (staleMs < staleLimitMs) {
       logger.info({ jobId }, "Job already running, skipping duplicate delivery");
       return null;
     }

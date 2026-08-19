@@ -13,14 +13,14 @@ import { SitesController } from "./sites.controller";
 import { SiteFilesController } from "./site-files.controller";
 
 import { SiteFilesService } from "./site-files.service";
-
 import { SitesService } from "./sites.service";
+import { GoogleDriveModule } from "../google-drive/google-drive.module";
 
 
 
 @Module({
 
-  imports: [AuthModule, AuditModule, JobsModule, ServersModule],
+  imports: [AuthModule, AuditModule, JobsModule, ServersModule, GoogleDriveModule],
 
   controllers: [SitesController, SiteFilesController],
 

@@ -31,6 +31,8 @@ export class SetupController {
       adminName?: string;
       licenseKey?: string;
       licenseServerUrl?: string;
+      panelDomain?: string;
+      panelUseHttps?: boolean;
     },
   ) {
     if (!body.organizationName || !body.adminEmail || !body.adminPassword || !body.licenseKey) {
@@ -43,6 +45,8 @@ export class SetupController {
       adminName: body.adminName,
       licenseKey: body.licenseKey,
       licenseServerUrl: body.licenseServerUrl,
+      panelDomain: body.panelDomain,
+      panelUseHttps: body.panelUseHttps,
     });
   }
 }

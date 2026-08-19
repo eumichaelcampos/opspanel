@@ -11,6 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { PrismaService } from "../prisma/prisma.service";
 import { LicenseCloudClient, type HeartbeatMetrics } from "./license-cloud.client";
+import { patchEnvFile } from "./env-file";
 
 export type LicenseSummary = {
   instanceId: string;
@@ -232,7 +233,11 @@ export class LicenseService implements OnModuleInit, OnModuleDestroy {
   async getBillingPlans() {
     const client = LicenseCloudClient.fromEnv();
     if (!client) throw new Error("License Cloud não configurado.");
-    return client.getBillingPlans();
+    const result = await client.getBillingPlans();
+    return {
+      ...result,
+      plans: result.plans.filter((p) => p.id !== "full_free"),
+    };
   }
 
   async createBillingCheckout(plan: "pro" | "business", urls?: { successUrl?: string; cancelUrl?: string }) {
@@ -283,33 +288,69 @@ export class LicenseService implements OnModuleInit, OnModuleDestroy {
     return this.applyCloudResponse(response);
   }
 
-  async activateLicenseKey(licenseKey: string, entitlementsJwt?: string) {
-    if (!isLicenseKeyFormat(licenseKey)) throw new Error("INVALID_LICENSE_KEY");
-
-    const env = loadEnv();
-    let entitlements: Entitlements;
-    if (entitlementsJwt && env.LICENSE_SIGNING_SECRET) {
-      entitlements = verifyEntitlementsJwt(entitlementsJwt, env.LICENSE_SIGNING_SECRET);
-    } else {
-      entitlements = resolveEntitlementsFromEnv({ licensePlan: env.LICENSE_PLAN });
+  async activateLicenseKey(licenseKey: string, _entitlementsJwt?: string) {
+    if (!isLicenseKeyFormat(licenseKey)) {
+      throw new Error("Chave de licença inválida. Deve começar com oplic_.");
     }
 
-    const row = await this.prisma.client.licenseState.update({
-      where: { id: "default" },
-      data: {
-        licenseKeyHash: this.hashKey(licenseKey),
-        plan: entitlements.plan,
-        status: LicenseStatus.active,
-        entitlements: entitlements as object,
-        validUntil: new Date(Date.now() + 30 * 86400 * 1000),
-        lastSyncAt: new Date(),
-      },
-    });
-    this.cached = this.toSummary(row, true);
-
     process.env.LICENSE_KEY = licenseKey;
-    await this.syncWithCloud("activate").catch(() => undefined);
+    try {
+      patchEnvFile("LICENSE_KEY", licenseKey);
+    } catch (err) {
+      this.logger.warn(
+        `Não foi possível gravar LICENSE_KEY no .env: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
-    return this.cached;
+    this.cached = null;
+
+    await this.prisma.client.licenseState.update({
+      where: { id: "default" },
+      data: { licenseKeyHash: this.hashKey(licenseKey) },
+    });
+
+    const client = LicenseCloudClient.fromEnv();
+    if (!client) {
+      throw new Error("License Cloud não configurado (LICENSE_SERVER_URL ausente no .env).");
+    }
+
+    try {
+      const synced = await this.syncWithCloud("activate");
+      if (synced) return synced;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/INSTANCE|Instância|vinculada/i.test(msg)) {
+        this.logger.warn("Conflito de instância; gerando novo instanceId para a nova licença.");
+        await this.prisma.client.licenseState.update({
+          where: { id: "default" },
+          data: { instanceId: randomUUID() },
+        });
+        this.cached = null;
+        const retried = await this.syncWithCloud("activate");
+        if (retried) return retried;
+      }
+      throw new Error(this.formatLicenseCloudError(msg));
+    }
+
+    throw new Error("Não foi possível ativar a licença no License Cloud.");
+  }
+
+  private formatLicenseCloudError(msg: string): string {
+    if (/LICENSE_NOT_FOUND|inválida|not found/i.test(msg)) {
+      return "Licença não encontrada. Verifique se a chave foi copiada corretamente.";
+    }
+    if (/INACTIVE|suspensa|revogada/i.test(msg)) {
+      return "Licença suspensa ou revogada. Contate o administrador.";
+    }
+    if (/Invalid plan/i.test(msg)) {
+      return "Plano da licença não reconhecido. Atualize o OpsPanel para a versão mais recente.";
+    }
+    if (/signature|JWT signature|signing/i.test(msg)) {
+      return "Erro de assinatura: LICENSE_SIGNING_SECRET não confere com o publisher.";
+    }
+    if (/INSTANCE|Instância|vinculada/i.test(msg)) {
+      return "Esta instância já está vinculada a outra licença. Tente novamente ou contate o suporte.";
+    }
+    return msg;
   }
 }

@@ -49,7 +49,11 @@ export class ReportsService {
       }),
       this.prisma.client.site.groupBy({
         by: ["serverId"],
-        where: { organizationId: user.organizationId, deletedAt: null },
+        where: {
+          organizationId: user.organizationId,
+          deletedAt: null,
+          server: { deletedAt: null },
+        },
         _count: true,
       }),
     ]);

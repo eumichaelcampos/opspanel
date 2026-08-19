@@ -15,13 +15,15 @@
     "@opspanel/config": "workspace:*",
     "@opspanel/contracts": "workspace:*",
     "@opspanel/database": "workspace:*",
+    "@opspanel/email-providers": "workspace:*",
     "@opspanel/observability": "workspace:*",
     "@opspanel/security": "workspace:*",
     "@opspanel/wordops": "workspace:*",
     "dotenv": "^17.2.1",
     "bullmq": "^5.58.0",
     "ioredis": "^5.7.0",
-    "ssh2": "^1.17.0"
+    "ssh2": "^1.17.0",
+    "basic-ftp": "^5.0.5"
   },
   "devDependencies": {
     "@opspanel/typescript-config": "workspace:*",

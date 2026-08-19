@@ -1,10 +1,16 @@
 import { z } from "zod";
 
 export * from "./wordops-site-catalog.js";
+export * from "./wordops-php-resolve.js";
+export * from "./wordops-site-manage.js";
 export * from "./wordops-site-onboarding.js";
+export * from "./site-migrate-onboarding.js";
 export * from "./wordops-server-catalog.js";
 export * from "./wordops-server-onboarding.js";
 export * from "./wordops-dashboard-catalog.js";
+export * from "./backup-policy.js";
+export * from "./email.js";
+export * from "./job-labels.js";
 
 export const OperationKeys = {
   ServerConnectionTest: "server.connection.test",
@@ -25,14 +31,31 @@ export const OperationKeys = {
   SiteCreate: "site.create",
   SiteManage: "site.manage",
   SiteBackup: "site.backup",
+  SiteRestore: "site.restore",
   SiteDelete: "site.delete",
   SiteUpdateDomain: "site.update.domain",
   SiteFtpUserCreate: "site.ftp.user.create",
+  SiteFtpUserDelete: "site.ftp.user.delete",
+  SiteMigrateFtp: "site.migrate.ftp",
+  SiteEmailDomainProvision: "site.email.domain.provision",
+  SiteEmailDnsPublish: "site.email.dns.publish",
+  SiteEmailMailboxCreate: "site.email.mailbox.create",
+  SiteEmailMailboxDelete: "site.email.mailbox.delete",
+  SiteEmailHealthCheck: "site.email.health.check",
 } as const;
 
 export type OperationKey = (typeof OperationKeys)[keyof typeof OperationKeys];
 
 const domainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+
+/** Campos opcionais: "" / só espaços viram undefined (evita falha de min() no create). */
+const optionalTrimmedString = (schema: z.ZodString) =>
+  z.preprocess((value) => {
+    if (value == null) return undefined;
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : undefined;
+  }, schema.optional());
 
 export const serverConnectionTestInputSchema = z.object({
   serverId: z.string().uuid(),
@@ -157,27 +180,25 @@ export const siteCreateInputSchema = z
     domain: z.string().min(3).max(253).regex(domainRegex),
     siteType: siteCreateTypeSchema,
     multisite: z.enum(["none", "subdir", "subdomain"]).optional().default("none"),
-    phpVersion: z.enum(["default", "74", "80", "81", "82", "83"]).optional().default("default"),
+    phpVersion: z.enum(["default", "74", "80", "81", "82", "83", "84"]).optional().default("84"),
     sslMode: z
       .enum(["none", "letsencrypt", "letsencrypt_dns_cf", "letsencrypt_wildcard_cf"])
       .optional()
-      .default("none"),
+      .default("letsencrypt"),
     hsts: z.boolean().optional(),
     ngxblocker: z.boolean().optional(),
     vhostOnly: z.boolean().optional(),
-    proxyTarget: z.string().max(120).optional(),
-    aliasTarget: z.string().max(253).optional(),
-    cloudflareApiKey: z.string().min(8).max(256).optional(),
-    cloudflareEmail: z
-      .string()
-      .refine((v) => !v || /^[^\s@]+@[^\s@]+$/.test(v), { message: "E-mail inválido" })
-      .optional(),
-    wpUser: z.string().min(1).max(60).optional(),
-    wpPass: z.string().min(8).max(128).optional(),
-    wpEmail: z
-      .string()
-      .refine((v) => !v || /^[^\s@]+@[^\s@]+$/.test(v), { message: "E-mail inválido" })
-      .optional(),
+    proxyTarget: optionalTrimmedString(z.string().max(120)),
+    aliasTarget: optionalTrimmedString(z.string().max(253)),
+    cloudflareApiKey: optionalTrimmedString(z.string().min(8, "Chave Cloudflare muito curta").max(256)),
+    cloudflareEmail: optionalTrimmedString(
+      z.string().email({ message: "E-mail Cloudflare inválido" }),
+    ),
+    wpUser: optionalTrimmedString(z.string().min(1).max(60)),
+    wpPass: optionalTrimmedString(
+      z.string().min(8, "Senha do WordPress deve ter pelo menos 8 caracteres (ou deixe em branco)").max(128),
+    ),
+    wpEmail: optionalTrimmedString(z.string().email({ message: "E-mail do WordPress inválido" })),
   })
   .superRefine((data, ctx) => {
     if (data.siteType === "proxy" && !data.proxyTarget) {
@@ -226,6 +247,7 @@ export const siteManageActionSchema = z.enum([
   "update_php81",
   "update_php82",
   "update_php83",
+  "update_php84",
 ]);
 
 export const siteManageInputSchema = z
@@ -252,10 +274,13 @@ export const siteFtpUserCreateInputSchema = z.object({
     .max(32)
     .regex(/^[a-z][a-z0-9_-]*$/i),
   password: z.string().min(8).max(128).optional(),
+  ensureProftpd: z.boolean().optional().default(true),
 });
 
-export const siteBackupInputSchema = z.object({
+export const siteFtpUserDeleteInputSchema = z.object({
   siteId: z.string().uuid(),
+  ftpUserId: z.string().uuid(),
+  username: z.string().min(2).max(32),
 });
 
 export const siteDeleteInputSchema = z.object({
@@ -267,6 +292,70 @@ export const siteUpdateDomainInputSchema = z.object({
   siteId: z.string().uuid(),
   newDomain: z.string().min(3).max(253).regex(domainRegex, "Domínio inválido"),
 });
+
+export const siteMigrateSourceProtocolSchema = z.enum(["ftp", "ftps", "sftp"]);
+
+export const siteMigrateDbModeSchema = z.enum([
+  "none",
+  "hosting_mysql",
+  "phpmyadmin_export",
+  "auto_wpconfig",
+  /** @deprecated use hosting_mysql */
+  "remote",
+  /** @deprecated use phpmyadmin_export */
+  "inline_sql",
+]);
+
+export const siteMigrateFtpInputSchema = z
+  .object({
+    siteId: z.string().uuid(),
+    sourceProtocol: siteMigrateSourceProtocolSchema,
+    sourceHost: z.string().min(1).max(255),
+    sourcePort: z.number().int().min(1).max(65535).optional(),
+    sourceUsername: z.string().min(1).max(128),
+    sourcePassword: z.string().min(1).max(256),
+    sourcePath: z.string().max(512).optional().default("/"),
+    oldUrl: z.string().max(512).optional(),
+    dbMode: siteMigrateDbModeSchema.optional().default("hosting_mysql"),
+    dbHost: z.string().max(255).optional(),
+    dbPort: z.number().int().min(1).max(65535).optional(),
+    dbName: z.string().max(128).optional(),
+    dbUser: z.string().max(128).optional(),
+    dbPassword: z.string().max(256).optional(),
+    sqlDumpBase64: z.string().max(70_000_000).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const dbMode = data.dbMode === "remote" ? "hosting_mysql" : data.dbMode === "inline_sql" ? "phpmyadmin_export" : data.dbMode;
+    if (dbMode === "hosting_mysql") {
+      if (!data.dbHost || !data.dbName || !data.dbUser || !data.dbPassword) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Informe host, banco, usuário e senha do MySQL da hospedagem",
+          path: ["dbHost"],
+        });
+      }
+    }
+    if (dbMode === "phpmyadmin_export" && !data.sqlDumpBase64) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Envie o arquivo .sql exportado do phpMyAdmin",
+        path: ["sqlDumpBase64"],
+      });
+    }
+  });
+
+export type SiteMigrateFtpInput = z.infer<typeof siteMigrateFtpInputSchema>;
+
+export const siteMigrateSourceProbeSchema = z.object({
+  sourceProtocol: siteMigrateSourceProtocolSchema,
+  sourceHost: z.string().min(1).max(255),
+  sourcePort: z.number().int().min(1).max(65535).optional(),
+  sourceUsername: z.string().min(1).max(128),
+  sourcePassword: z.string().min(1).max(256),
+  sourcePath: z.string().max(512).optional().default("/"),
+});
+
+export type SiteMigrateSourceProbeInput = z.infer<typeof siteMigrateSourceProbeSchema>;
 
 export const serverRebootInputSchema = z.object({
   serverId: z.string().uuid(),

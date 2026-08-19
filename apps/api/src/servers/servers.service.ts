@@ -11,6 +11,7 @@ import { loadEnv } from "@opspanel/config";
 import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
 import { SessionUser } from "../auth/auth.guard";
+import { QuotasService } from "../license/quotas.service";
 import { JobsService } from "../jobs/jobs.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -50,6 +51,7 @@ export class ServersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly jobs: JobsService,
+    private readonly quotas: QuotasService,
   ) {
     this.encryptionKey = loadEnv().CREDENTIALS_ENCRYPTION_KEY;
   }
@@ -86,6 +88,7 @@ export class ServersService {
 
   async create(user: SessionUser, body: unknown, ip?: string) {
     this.assertRole(user, [OrgRole.owner, OrgRole.admin, OrgRole.operator]);
+    await this.quotas.assertCanCreateServer();
     const parsed = createServerSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -617,9 +620,15 @@ export class ServersService {
     this.assertRole(user, [OrgRole.owner, OrgRole.admin]);
     const server = await this.findServerOrThrow(user, serverId);
 
+    const deletedAt = new Date();
+    const sitesResult = await this.prisma.client.site.updateMany({
+      where: { serverId, organizationId: user.organizationId, deletedAt: null },
+      data: { deletedAt },
+    });
+
     await this.prisma.client.server.update({
       where: { id: serverId },
-      data: { deletedAt: new Date() },
+      data: { deletedAt },
     });
 
     await this.audit.log({
@@ -630,10 +639,10 @@ export class ServersService {
       targetId: serverId,
       result: "success",
       ipAddress: ip,
-      metadata: { name: server.name, host: server.host },
+      metadata: { name: server.name, host: server.host, sitesRemoved: sitesResult.count },
     });
 
-    return { ok: true };
+    return { ok: true, sitesRemoved: sitesResult.count };
   }
 
   async reboot(user: SessionUser, serverId: string, body: unknown, ip?: string) {

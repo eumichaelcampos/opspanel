@@ -4,9 +4,13 @@ import {
 
   Controller,
 
+  Delete,
+
   Get,
 
   Param,
+
+  Patch,
 
   Post,
 
@@ -41,11 +45,11 @@ export class SitesController {
 
 
   @Get("create-options")
-  createOptions(@CurrentUser() user: SessionUser) {
+  createOptions(@CurrentUser() user: SessionUser, @Query("serverId") serverId?: string) {
     if (!this.sites.canRead(user)) {
       throw new ForbiddenException({ error: { code: "FORBIDDEN", message: "Permissão insuficiente." } });
     }
-    return this.sites.getCreateOptions();
+    return this.sites.getCreateOptions(user, serverId);
   }
 
   @Get()
@@ -58,6 +62,26 @@ export class SitesController {
   }
 
 
+
+  @Get("migrate-targets")
+  migrateTargets(@CurrentUser() user: SessionUser) {
+    return this.sites.getMigrateTargets(user);
+  }
+
+  @Post("migrate")
+  migrateFtp(@CurrentUser() user: SessionUser, @Body() body: unknown, @Req() req: FastifyRequest) {
+    return this.sites.migrateFtp(user, body, req.ip);
+  }
+
+  @Post("migrate/source-test")
+  migrateSourceTest(@CurrentUser() user: SessionUser, @Body() body: unknown) {
+    return this.sites.testMigrateSource(user, body);
+  }
+
+  @Post("migrate/source-browse")
+  migrateSourceBrowse(@CurrentUser() user: SessionUser, @Body() body: unknown) {
+    return this.sites.browseMigrateSource(user, body);
+  }
 
   @Post()
 
@@ -133,9 +157,60 @@ export class SitesController {
 
   }
 
+  @Delete(":siteId/ftp-users/:ftpUserId")
+  deleteFtpUser(
+    @CurrentUser() user: SessionUser,
+    @Param("siteId") siteId: string,
+    @Param("ftpUserId") ftpUserId: string,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.sites.deleteFtpUser(user, siteId, ftpUserId, req.ip);
+  }
+
+  @Get(":siteId/ftp-users/:ftpUserId/password")
+  getFtpUserPassword(
+    @CurrentUser() user: SessionUser,
+    @Param("siteId") siteId: string,
+    @Param("ftpUserId") ftpUserId: string,
+  ) {
+    if (!this.sites.canRead(user)) {
+      throw new ForbiddenException({ error: { code: "FORBIDDEN", message: "Permissão insuficiente." } });
+    }
+    return this.sites.getFtpUserPassword(user, siteId, ftpUserId);
+  }
+
   @Post(":siteId/backup")
   backup(@CurrentUser() user: SessionUser, @Param("siteId") siteId: string, @Req() req: FastifyRequest) {
     return this.sites.backup(user, siteId, req.ip);
+  }
+
+  @Get(":siteId/backups")
+  listBackups(@CurrentUser() user: SessionUser, @Param("siteId") siteId: string) {
+    return this.sites.listBackups(user, siteId);
+  }
+
+  @Get(":siteId/backup-policy")
+  backupPolicy(@CurrentUser() user: SessionUser, @Param("siteId") siteId: string) {
+    return this.sites.getBackupPolicy(user, siteId);
+  }
+
+  @Patch(":siteId/backup-policy")
+  updateBackupPolicy(
+    @CurrentUser() user: SessionUser,
+    @Param("siteId") siteId: string,
+    @Body() body: unknown,
+  ) {
+    return this.sites.updateBackupPolicy(user, siteId, body);
+  }
+
+  @Post(":siteId/restore")
+  restore(
+    @CurrentUser() user: SessionUser,
+    @Param("siteId") siteId: string,
+    @Body() body: unknown,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.sites.restore(user, siteId, body, req.ip);
   }
 
   @Post(":siteId/delete")
@@ -146,6 +221,16 @@ export class SitesController {
     @Req() req: FastifyRequest,
   ) {
     return this.sites.deleteSite(user, siteId, body, req.ip);
+  }
+
+  @Get(":siteId/dns")
+  checkDns(@CurrentUser() user: SessionUser, @Param("siteId") siteId: string) {
+    return this.sites.checkDns(user, siteId);
+  }
+
+  @Post(":siteId/wp-autologin")
+  wpAutologin(@CurrentUser() user: SessionUser, @Param("siteId") siteId: string, @Req() req: FastifyRequest) {
+    return this.sites.wpAutologin(user, siteId, req.ip);
   }
 
   @Post(":siteId/update-domain")

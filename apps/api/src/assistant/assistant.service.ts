@@ -2,10 +2,13 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { OrgRole } from "@opspanel/database";
 import { siteCreateInputSchema } from "@opspanel/contracts";
 import { SessionUser } from "../auth/auth.guard";
+import { CodexOAuthService } from "../codex/codex-oauth.service";
 import { DashboardService } from "../dashboard/dashboard.service";
+import { QuotasService } from "../license/quotas.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { SitesService } from "../sites/sites.service";
-
+import { UserSecretsService } from "../user-secrets/user-secrets.service";
+import { LicenseService } from "../license/license.service";
 export type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
 
 type ToolResult = { tool: string; data: unknown };
@@ -16,6 +19,10 @@ export class AssistantService {
     private readonly prisma: PrismaService,
     private readonly dashboard: DashboardService,
     private readonly sites: SitesService,
+    private readonly quotas: QuotasService,
+    private readonly userSecrets: UserSecretsService,
+    private readonly license: LicenseService,
+    private readonly codex: CodexOAuthService,
   ) {}
 
   private assertWrite(user: SessionUser) {
@@ -31,9 +38,12 @@ export class AssistantService {
       throw new BadRequestException({ error: { code: "VALIDATION_ERROR", message: "Mensagem vazia." } });
     }
 
+    const userOpenAiKey = await this.userSecrets.getOpenAiApiKey(user.id);
+    const codexStatus = await this.codex.getStatus(user.id);
+    const entitlements = await this.license.getEntitlements();
+    const platformKey = process.env.OPENAI_API_KEY;
     const toolResults: ToolResult[] = [];
     const lower = text.toLowerCase();
-
     if (/listar\s+(servidores|servers)/.test(lower) || /quais\s+servidores/.test(lower)) {
       toolResults.push({ tool: "list_servers", data: await this.listServers(user) });
     }
@@ -78,14 +88,39 @@ export class AssistantService {
       }
     }
 
-    const openAiKey = process.env.OPENAI_API_KEY;
+    const openAiKey = userOpenAiKey || (entitlements.aiAssistant ? platformKey : undefined);
     if (openAiKey) {
-      return this.replyWithOpenAi(text, messages, toolResults, openAiKey);
+      const result = await this.replyWithOpenAi(text, messages, toolResults, openAiKey);
+      await this.quotas.incrementMetric("ai_calls");
+      return {
+        ...result,
+        provider: userOpenAiKey ? "user_byok" : "platform",
+      };
     }
 
-    return { reply: this.replyRuleBased(text, toolResults), toolResults };
-  }
+    if (codexStatus.connected) {
+      try {
+        const result = await this.replyWithCodex(user.id, text, messages, toolResults);
+        await this.quotas.incrementMetric("ai_calls");
+        return {
+          ...result,
+          provider: "chatgpt_codex" as const,
+        };
+      } catch {
+        // fall through to local mode
+      }
+    }
 
+    await this.quotas.incrementMetric("ai_calls");
+    return {
+      reply: this.replyRuleBased(text, toolResults),
+      toolResults,
+      provider: "local" as const,
+      hint: codexStatus.connected
+        ? "ChatGPT indisponível no momento; usando modo local."
+        : "Conecte ChatGPT (assinatura) ou sua API key OpenAI em Conta & API para respostas com GPT.",
+    };
+  }
   private async listServers(user: SessionUser) {
     return this.prisma.client.server.findMany({
       where: { organizationId: user.organizationId, deletedAt: null },
@@ -96,7 +131,11 @@ export class AssistantService {
 
   private async listSites(user: SessionUser) {
     return this.prisma.client.site.findMany({
-      where: { organizationId: user.organizationId, deletedAt: null },
+      where: {
+        organizationId: user.organizationId,
+        deletedAt: null,
+        server: { deletedAt: null },
+      },
       select: { id: true, domain: true, status: true, server: { select: { name: true } } },
       orderBy: { domain: "asc" },
       take: 50,
@@ -160,18 +199,35 @@ export class AssistantService {
     return parts.join("\n\n");
   }
 
-  private async replyWithOpenAi(
-    text: string,
-    messages: ChatMessage[],
-    toolResults: ToolResult[],
-    apiKey: string,
-  ) {
-    const system = `Você é o assistente OpsPanel, control plane WordOps. Responda em português, de forma concisa. Use os resultados das ferramentas quando disponíveis. Nunca invente IDs ou domínios.`;
-
+  private buildSystemPrompt(toolResults: ToolResult[]) {
     const contextBlock =
       toolResults.length > 0
         ? `\n\nResultados das ferramentas:\n${JSON.stringify(toolResults, null, 2)}`
         : "";
+    return `Você é o assistente OpsPanel, control plane WordOps. Responda em português, de forma concisa. Use os resultados das ferramentas quando disponíveis. Nunca invente IDs ou domínios.${contextBlock}`;
+  }
+
+  private async replyWithCodex(
+    userId: string,
+    text: string,
+    messages: ChatMessage[],
+    toolResults: ToolResult[],
+  ) {
+    const system = this.buildSystemPrompt(toolResults);
+    const reply =
+      (await this.codex.chatCompletion(userId, system, [
+        ...messages.slice(-10),
+        ...(toolResults.length ? [{ role: "user", content: `Contexto adicional:\n${JSON.stringify(toolResults, null, 2)}` }] : []),
+      ])) ?? this.replyRuleBased(text, toolResults);
+    return { reply, toolResults };
+  }
+
+  private async replyWithOpenAi(    text: string,
+    messages: ChatMessage[],
+    toolResults: ToolResult[],
+    apiKey: string,
+  ) {
+    const system = this.buildSystemPrompt(toolResults);
 
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -184,13 +240,11 @@ export class AssistantService {
         messages: [
           { role: "system", content: system },
           ...messages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
-          ...(contextBlock ? [{ role: "user" as const, content: `Contexto adicional:${contextBlock}` }] : []),
         ],
         temperature: 0.3,
         max_tokens: 800,
       }),
     });
-
     if (!res.ok) {
       return { reply: this.replyRuleBased(text, toolResults), toolResults, aiError: "OpenAI indisponível, usando modo local." };
     }

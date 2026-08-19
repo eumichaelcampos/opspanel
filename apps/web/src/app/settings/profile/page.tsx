@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppShell } from "@/components/app-shell";
 import { apiFetch } from "@/lib/api";
 
 export default function ProfileSettingsPage() {
@@ -44,19 +43,23 @@ export default function ProfileSettingsPage() {
   });
 
   return (
-    <AppShell title="Perfil">
+    <>
       {isLoading ? <p className="text-muted">Carregando...</p> : null}
       <div className="mx-auto max-w-lg space-y-6">
         <section className="glass-card space-y-4 p-5">
           <h2 className="font-semibold">Dados pessoais</h2>
           <div>
             <label className="mb-1 block text-sm text-muted">E-mail</label>
-            <input className="w-full rounded-card border bg-white/70 px-3 py-2 text-sm" value={me?.user.email ?? ""} disabled />
+            <input
+              className="w-full rounded-card border border-ink/20 bg-white/70 px-3 py-2 text-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+              value={me?.user.email ?? ""}
+              disabled
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm text-muted">Nome de exibição</label>
             <input
-              className="w-full rounded-card border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 text-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -72,7 +75,7 @@ export default function ProfileSettingsPage() {
             <label className="mb-1 block text-sm text-muted">Senha atual</label>
             <input
               type="password"
-              className="w-full rounded-card border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 text-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
             />
@@ -81,7 +84,7 @@ export default function ProfileSettingsPage() {
             <label className="mb-1 block text-sm text-muted">Nova senha</label>
             <input
               type="password"
-              className="w-full rounded-card border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 text-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
             />
@@ -102,6 +105,6 @@ export default function ProfileSettingsPage() {
           {saveMutation.isPending ? "Salvando..." : "Salvar alterações"}
         </button>
       </div>
-    </AppShell>
+    </>
   );
 }

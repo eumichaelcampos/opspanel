@@ -21,23 +21,107 @@ export interface SshTarget {
 }
 
 export interface SshSession {
-  execProbe(probe: readonly string[]): Promise<{ stdout: string; stderr: string; code: number }>;
+  execProbe(
+    probe: readonly string[],
+    options?: { timeoutMs?: number; pty?: boolean },
+  ): Promise<{ stdout: string; stderr: string; code: number }>;
+  execProbeStreaming(
+    probe: readonly string[],
+    handlers?: ExecStreamingHandlers,
+    timeoutMs?: number,
+  ): Promise<{ stdout: string; stderr: string; code: number }>;
   close(): void;
 }
 
-function execCommand(client: Client, command: string): Promise<{ stdout: string; stderr: string; code: number }> {
+function execCommand(
+  client: Client,
+  command: string,
+  options?: { pty?: boolean; timeoutMs?: number },
+): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve, reject) => {
-    client.exec(command, (err, stream) => {
+    const timeoutMs = options?.timeoutMs ?? 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    client.exec(command, options?.pty ? { pty: true } : {}, (err, stream) => {
       if (err) return reject(err);
       let stdout = "";
       let stderr = "";
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          stream.close();
+          reject(new Error(`SSH command timeout after ${Math.round(timeoutMs / 1000)}s`));
+        }, timeoutMs);
+      }
       stream
-        .on("close", (code: number) => resolve({ stdout, stderr, code: code ?? 0 }))
+        .on("close", (code: number) => {
+          if (timer) clearTimeout(timer);
+          resolve({ stdout, stderr, code: code ?? 0 });
+        })
         .on("data", (data: Buffer) => {
           stdout += data.toString();
         });
-      stream.stderr.on("data", (data: Buffer) => {
+      stream.stderr?.on("data", (data: Buffer) => {
         stderr += data.toString();
+      });
+    });
+  });
+}
+
+export interface ExecStreamingHandlers {
+  onChunk?: (chunk: string, stream: "stdout" | "stderr") => void;
+  onLine?: (line: string) => void;
+}
+
+function feedStreamingHandlers(
+  handlers: ExecStreamingHandlers | undefined,
+  chunk: string,
+  stream: "stdout" | "stderr",
+  lineBuffer: { value: string },
+) {
+  handlers?.onChunk?.(chunk, stream);
+  if (!handlers?.onLine) return;
+  lineBuffer.value += chunk;
+  const parts = lineBuffer.value.split(/\r?\n/);
+  lineBuffer.value = parts.pop() ?? "";
+  for (const line of parts) {
+    const trimmed = line.trimEnd();
+    if (trimmed) handlers.onLine(trimmed);
+  }
+}
+
+function execCommandStreaming(
+  client: Client,
+  command: string,
+  handlers?: ExecStreamingHandlers,
+  timeoutMs = 900_000,
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  return new Promise((resolve, reject) => {
+    const lineBuffer = { value: "" };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    client.exec(command, { pty: true }, (err, stream) => {
+      if (err) return reject(err);
+      let stdout = "";
+      let stderr = "";
+      timer = setTimeout(() => {
+        stream.close();
+        reject(new Error(`SSH command timeout after ${Math.round(timeoutMs / 1000)}s`));
+      }, timeoutMs);
+      stream
+        .on("close", (code: number) => {
+          if (timer) clearTimeout(timer);
+          if (lineBuffer.value.trim() && handlers?.onLine) {
+            handlers.onLine(lineBuffer.value.trimEnd());
+          }
+          resolve({ stdout, stderr, code: code ?? 0 });
+        })
+        .on("data", (data: Buffer) => {
+          const text = data.toString();
+          stdout += text;
+          feedStreamingHandlers(handlers, text, "stdout", lineBuffer);
+        });
+      stream.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString();
+        stderr += text;
+        feedStreamingHandlers(handlers, text, "stderr", lineBuffer);
       });
     });
   });
@@ -49,8 +133,14 @@ export function connectSshSession(target: SshTarget): Promise<SshSession> {
     client
       .on("ready", () => {
         resolve({
-          async execProbe(probe: readonly string[]) {
-            return execCommand(client, formatRemoteCommand(probe));
+          async execProbe(probe: readonly string[], options?: { timeoutMs?: number; pty?: boolean }) {
+            return execCommand(client, formatRemoteCommand(probe), {
+              pty: options?.pty,
+              timeoutMs: options?.timeoutMs,
+            });
+          },
+          async execProbeStreaming(probe: readonly string[], handlers?: ExecStreamingHandlers, timeoutMs?: number) {
+            return execCommandStreaming(client, formatRemoteCommand(probe), handlers, timeoutMs ?? 900_000);
           },
           close() {
             client.end();

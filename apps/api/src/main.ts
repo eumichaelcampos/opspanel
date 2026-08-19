@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-config({ path: resolve(process.cwd(), "../../.env") });
+config({ path: resolve(process.cwd(), "../../.env"), override: true });
 
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -27,9 +27,12 @@ async function bootstrap() {
   );
 
   await app.register(helmet);
+  // Tráfego do browser passa pelo rewrite do Next (:3000 → :3001) como 127.0.0.1;
+  // sem allowList, todo o painel compartilha um único bucket de 120 req/min.
   await app.register(fastifyRateLimit, {
-    max: env.NODE_ENV === "production" ? 120 : 600,
+    max: 1000,
     timeWindow: "1 minute",
+    allowList: ["127.0.0.1", "::1", "::ffff:127.0.0.1"],
   });
   await app.register(fastifyCors, {
     origin: env.WEB_URL,

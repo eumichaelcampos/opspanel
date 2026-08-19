@@ -25,6 +25,7 @@ import {
 } from "@opspanel/contracts";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -40,9 +41,14 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 type CreateOptions = {
-  phpVersions: { id: string; label: string; flag: string | null }[];
+  phpVersions: { id: string; label: string; flag: string | null; available?: boolean; installed?: boolean }[];
   multisite: { id: string; label: string; flags: string[] }[];
   docsUrl: string;
+  installedPhpVersions?: string[];
+  preferredPhpVersion?: string;
+  serverStackKnown?: boolean;
+  serverName?: string;
+  healthObservedAt?: string | null;
 };
 
 type ServerRow = { id: string; name: string; host: string; status: string; wordopsVersion?: string | null };
@@ -50,7 +56,6 @@ type ServerRow = { id: string; name: string; host: string; status: string; wordo
 type Props = {
   presetServerId?: string;
   servers: ServerRow[];
-  options?: CreateOptions;
   onJobStarted: (jobId: string) => void;
 };
 
@@ -101,7 +106,7 @@ function stepIcon(id: SiteCreationStepId) {
   }
 }
 
-export function SiteCreationWizard({ presetServerId, servers, options, onJobStarted }: Props) {
+export function SiteCreationWizard({ presetServerId, servers, onJobStarted }: Props) {
   const [draft, setDraft] = useState<SiteCreationDraft>({
     ...DEFAULT_SITE_CREATION_DRAFT,
     serverId: presetServerId ?? "",
@@ -109,6 +114,24 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
   const [stepIndex, setStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const { data: options } = useQuery({
+    queryKey: ["sites-create-options", draft.serverId],
+    queryFn: () =>
+      apiFetch<CreateOptions>(
+        `/sites/create-options${draft.serverId ? `?serverId=${encodeURIComponent(draft.serverId)}` : ""}`,
+      ),
+    enabled: Boolean(draft.serverId),
+  });
+
+  useEffect(() => {
+    if (!options?.preferredPhpVersion || !options.serverStackKnown) return;
+    setDraft((prev) => {
+      const current = options.phpVersions.find((p) => p.id === prev.phpVersion);
+      if (current?.available !== false) return prev;
+      return { ...prev, phpVersion: options.preferredPhpVersion as WordOpsPhpVersionId };
+    });
+  }, [options?.preferredPhpVersion, options?.serverStackKnown, options?.phpVersions]);
 
   const visibleSteps = useMemo(() => getVisibleSiteCreationSteps(draft), [draft]);
   const currentStep = visibleSteps[stepIndex];
@@ -223,7 +246,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
             <label className="block space-y-2 text-sm">
               <span className="font-medium text-ink">Em qual servidor?</span>
               <select
-                className="w-full rounded-card border border-white/80 bg-white px-3 py-2.5"
+                className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 value={draft.serverId}
                 onChange={(e) => patch({ serverId: e.target.value })}
               >
@@ -245,7 +268,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
             <label className="block space-y-2 text-sm">
               <span className="font-medium text-ink">Qual o endereço do site?</span>
               <input
-                className="w-full rounded-card border border-white/80 bg-white px-3 py-2.5"
+                className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="minhaloja.com.br"
                 value={draft.domain}
                 onChange={(e) => patch({ domain: e.target.value })}
@@ -335,7 +358,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
             <label className="block space-y-2 text-sm">
               <span className="font-medium text-ink">Nome de usuário do administrador</span>
               <input
-                className="w-full rounded-card border bg-white px-3 py-2.5"
+                className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 value={draft.wpUser}
                 onChange={(e) => patch({ wpUser: e.target.value })}
                 placeholder="admin"
@@ -346,7 +369,8 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
                 <span className="font-medium text-ink">Senha (opcional)</span>
                 <input
                   type="password"
-                  className="w-full rounded-card border bg-white px-3 py-2.5"
+                  autoComplete="new-password"
+                  className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                   value={draft.wpPass}
                   onChange={(e) => patch({ wpPass: e.target.value })}
                   placeholder="Deixe vazio para gerar automaticamente"
@@ -355,7 +379,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
               <label className="block space-y-2 text-sm">
                 <span className="font-medium text-ink">E-mail (opcional)</span>
                 <input
-                  className="w-full rounded-card border bg-white px-3 py-2.5"
+                  className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                   value={draft.wpEmail}
                   onChange={(e) => patch({ wpEmail: e.target.value })}
                   placeholder="seu@email.com"
@@ -366,7 +390,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
               <label className="block space-y-2 text-sm">
                 <span className="font-medium text-ink">Rede de sites (multisite)</span>
                 <select
-                  className="w-full rounded-card border bg-white px-3 py-2.5"
+                  className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                   value={draft.multisite}
                   onChange={(e) => patch({ multisite: e.target.value as SiteCreationDraft["multisite"] })}
                 >
@@ -387,7 +411,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
               <label className="block space-y-2 text-sm">
                 <span className="font-medium text-ink">Endereço interno da aplicação</span>
                 <input
-                  className="w-full rounded-card border bg-white px-3 py-2.5 font-mono text-sm"
+                  className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 font-mono text-sm focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                   value={draft.proxyTarget}
                   onChange={(e) => patch({ proxyTarget: e.target.value })}
                   placeholder="127.0.0.1:3000"
@@ -399,7 +423,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
               <label className="block space-y-2 text-sm">
                 <span className="font-medium text-ink">Redirecionar visitantes para</span>
                 <input
-                  className="w-full rounded-card border bg-white px-3 py-2.5"
+                  className="w-full rounded-card border border-ink/20 bg-white px-3 py-2.5 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                   value={draft.aliasTarget}
                   onChange={(e) => patch({ aliasTarget: e.target.value })}
                   placeholder="www.meusite.com.br"
@@ -454,7 +478,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
                     <span className="text-muted">Chave de API Cloudflare</span>
                     <input
                       type="password"
-                      className="w-full rounded-card border bg-white px-3 py-2"
+                      className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                       value={draft.cfKey}
                       onChange={(e) => patch({ cfKey: e.target.value })}
                     />
@@ -462,7 +486,7 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
                   <label className="space-y-1 text-sm">
                     <span className="text-muted">E-mail da conta Cloudflare</span>
                     <input
-                      className="w-full rounded-card border bg-white px-3 py-2"
+                      className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                       value={draft.cfEmail}
                       onChange={(e) => patch({ cfEmail: e.target.value })}
                     />
@@ -477,22 +501,40 @@ export function SiteCreationWizard({ presetServerId, servers, options, onJobStar
           <div className="space-y-5">
             <div className="space-y-2">
               <p className="text-sm font-medium text-ink">Versão do PHP</p>
-              <p className="text-xs text-muted">Para WordPress, PHP 8.3 é a opção recomendada hoje.</p>
+              <p className="text-xs text-muted">
+                {options?.serverStackKnown
+                  ? `PHP instalados no servidor: ${options.installedPhpVersions?.length ? options.installedPhpVersions.map((v) => `8.${v}`).join(", ") : "nenhum detectado (escaneie a saúde do servidor)"}.`
+                  : "Selecione um servidor para ver quais versões PHP estão disponíveis."}
+              </p>
               <div className="flex flex-wrap gap-2">
-                {(options?.phpVersions ?? []).map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => patch({ phpVersion: p.id as WordOpsPhpVersionId })}
-                    className={cn(
-                      "rounded-card border px-3 py-2 text-sm transition",
-                      draft.phpVersion === p.id ? "border-accent bg-accent/10" : "border-white/80",
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+                {(options?.phpVersions ?? []).map((p) => {
+                  const unavailable = p.available === false;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={unavailable}
+                      onClick={() => !unavailable && patch({ phpVersion: p.id as WordOpsPhpVersionId })}
+                      className={cn(
+                        "rounded-card border px-3 py-2 text-sm transition",
+                        draft.phpVersion === p.id ? "border-accent bg-accent/10" : "border-white/80",
+                        unavailable && "cursor-not-allowed opacity-40",
+                        p.installed && draft.phpVersion !== p.id && "ring-1 ring-success/30",
+                      )}
+                      title={unavailable ? "Não instalado neste servidor" : p.installed ? "Instalado no servidor" : undefined}
+                    >
+                      {p.label}
+                      {p.installed ? " ✓" : null}
+                    </button>
+                  );
+                })}
               </div>
+              {options?.serverStackKnown && draft.phpVersion !== options.preferredPhpVersion && options.preferredPhpVersion ? (
+                <p className="text-xs text-amber-800">
+                  PHP {draft.phpVersion === "default" ? "padrão" : `8.${draft.phpVersion}`} pode não estar no servidor.
+                  Recomendado: PHP 8.{options.preferredPhpVersion}.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <p className="text-sm font-medium text-ink">Opções extras</p>

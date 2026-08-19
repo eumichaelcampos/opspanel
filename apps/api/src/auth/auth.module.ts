@@ -1,10 +1,11 @@
-import { Module, forwardRef } from "@nestjs/common";
+import { Global, Module, forwardRef } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ApiKeyGuard } from "./api-key.guard";
 import { AuthController, MeController } from "./auth.controller";
 import { AuthGuard } from "./auth.guard";
 import { AuthService } from "./auth.service";
 
+@Global()
 @Module({
   imports: [forwardRef(() => AuditModule)],
   controllers: [AuthController, MeController],

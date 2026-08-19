@@ -31,7 +31,12 @@ function woCmd(subcommand: string): string {
 }
 
 function woVersionCmd(): string {
-  return `(command -v wo >/dev/null && (wo --version 2>/dev/null || wo version 2>/dev/null)) || (/usr/local/bin/wo --version 2>/dev/null || /usr/local/bin/wo version 2>/dev/null || true)`;
+  return `(command -v wo >/dev/null && (wo --version 2>/dev/null | head -1)) || (/usr/local/bin/wo --version 2>/dev/null | head -1 || true)`;
+}
+
+function woStackStatusCmd(): string {
+  // --all pode retornar vazio com exit 0 em algumas versões; sempre incluir stack status padrão.
+  return `{ out=$(${woCmd("stack status --all")} 2>&1); if [ -n "$out" ]; then echo "$out"; else ${woCmd("stack status")} 2>&1; fi; }`;
 }
 
 function stripAnsi(text: string): string {
@@ -122,7 +127,7 @@ export function buildHealthCollectScript(): string {
     'echo "===OPS_PROCESSES==="',
     "ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5",
     'echo "===OPS_STACK==="',
-    `${woCmd("stack status --all")} 2>/dev/null || ${woCmd("stack status")} 2>/dev/null || true`,
+    woStackStatusCmd(),
   ].join("; ");
   return script;
 }

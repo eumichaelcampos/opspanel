@@ -75,7 +75,7 @@ export default function SetupPage() {
         method: "POST",
         body: JSON.stringify({ email: adminEmail, password: adminPassword }),
       });
-      router.push("/dashboard");
+      router.push("/setup/servers");
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Falha no setup"),
   });
@@ -100,7 +100,7 @@ export default function SetupPage() {
           <p className="text-xs uppercase tracking-widest text-accent">OpsPanel</p>
           <h1 className="text-2xl font-semibold text-ink">Configuração inicial</h1>
           <p className="mt-1 text-sm text-muted">
-            Instalação self-hosted. Crie a conta admin e ative a licença free para começar.
+            Instalação self-hosted. Crie a conta admin, ative a licença e conecte o servidor dos sites.
           </p>
         </div>
 
@@ -254,7 +254,7 @@ export default function SetupPage() {
               <p className="truncate font-mono text-xs"><span className="text-muted">Licença:</span> {licenseKey.slice(0, 20)}…</p>
             </div>
             <p className="text-xs text-muted">
-              Ao concluir, a licença é ativada nesta instância e você entra no painel.
+              Ao concluir, a licença é ativada e o próximo passo é conectar o servidor (novo ou com WordOps).
             </p>
             <div className="flex gap-2">
               <button type="button" className="rounded-card border px-3 py-2 text-sm" onClick={() => setStep(2)}>

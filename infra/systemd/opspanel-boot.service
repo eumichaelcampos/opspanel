@@ -1,0 +1,18 @@
+[Unit]
+Description=OpsPanel boot (Docker deps + PM2)
+Documentation=https://github.com/eumichaelcampos/opspanel
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+After=pm2-root.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+Environment=NVM_DIR=/root/.nvm
+# OPSPANEL_COMPOSE_FILE e ExecStart são preenchidos por scripts/enable-boot-restart.sh
+ExecStart=/root/opspanel/scripts/opspanel-boot.sh
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

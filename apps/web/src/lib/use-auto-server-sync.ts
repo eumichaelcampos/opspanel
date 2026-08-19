@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { isObservedStale, SYNC_INTERVALS } from "@/lib/auto-sync";
 
@@ -9,8 +10,8 @@ type Options = {
   enabled: boolean;
   healthObservedAt?: string | null;
   metricsObservedAt?: string | null;
+  /** Job iniciado pelo usuário (teste SSH, sync, stack). Bloqueia sync em background. */
   activeJobId: string | null;
-  onJobStarted: (jobId: string) => void;
   /** Força coleta de saúde quando inventário da stack ainda está vazio. */
   needsStackScan?: boolean;
 };
@@ -21,18 +22,26 @@ export function useAutoServerSync({
   healthObservedAt,
   metricsObservedAt,
   activeJobId,
-  onJobStarted,
   needsStackScan = false,
 }: Options) {
-  const onJobStartedRef = useRef(onJobStarted);
-  onJobStartedRef.current = onJobStarted;
+  const qc = useQueryClient();
+  const activeJobIdRef = useRef(activeJobId);
+  activeJobIdRef.current = activeJobId;
   const inFlightRef = useRef(false);
+  const lastSpawnAtRef = useRef(0);
 
   useEffect(() => {
     if (!enabled || !serverId) return;
 
+    function scheduleRefresh() {
+      window.setTimeout(() => {
+        void qc.invalidateQueries({ queryKey: ["server", serverId] });
+      }, 5000);
+    }
+
     async function tick() {
-      if (activeJobId || inFlightRef.current) return;
+      if (activeJobIdRef.current || inFlightRef.current) return;
+      if (Date.now() - lastSpawnAtRef.current < SYNC_INTERVALS.checkMs) return;
 
       const healthStale =
         needsStackScan || isObservedStale(healthObservedAt, SYNC_INTERVALS.healthStaleMs);
@@ -40,18 +49,14 @@ export function useAutoServerSync({
       if (!healthStale && !metricsStale) return;
 
       inFlightRef.current = true;
+      lastSpawnAtRef.current = Date.now();
       try {
         if (healthStale) {
-          const result = await apiFetch<{ jobId: string }>(`/servers/${serverId}/health`, {
-            method: "POST",
-          });
-          onJobStartedRef.current(result.jobId);
+          await apiFetch<{ jobId: string }>(`/servers/${serverId}/health`, { method: "POST" });
         } else if (metricsStale) {
-          const result = await apiFetch<{ jobId: string }>(`/servers/${serverId}/metrics`, {
-            method: "POST",
-          });
-          onJobStartedRef.current(result.jobId);
+          await apiFetch<{ jobId: string }>(`/servers/${serverId}/metrics`, { method: "POST" });
         }
+        scheduleRefresh();
       } catch {
         /* próxima verificação tenta de novo */
       } finally {
@@ -62,5 +67,5 @@ export function useAutoServerSync({
     void tick();
     const timer = setInterval(() => void tick(), SYNC_INTERVALS.checkMs);
     return () => clearInterval(timer);
-  }, [enabled, serverId, healthObservedAt, metricsObservedAt, activeJobId, needsStackScan]);
+  }, [enabled, serverId, healthObservedAt, metricsObservedAt, needsStackScan, qc]);
 }

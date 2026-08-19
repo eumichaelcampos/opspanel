@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { isObservedStale, SYNC_INTERVALS } from "@/lib/auto-sync";
 
@@ -9,31 +10,30 @@ type Options = {
   enabled: boolean;
   lastObservedAt?: string | null;
   activeJobId: string | null;
-  onJobStarted: (jobId: string) => void;
 };
 
-export function useAutoSiteSync({
-  siteId,
-  enabled,
-  lastObservedAt,
-  activeJobId,
-  onJobStarted,
-}: Options) {
-  const onJobStartedRef = useRef(onJobStarted);
-  onJobStartedRef.current = onJobStarted;
+export function useAutoSiteSync({ siteId, enabled, lastObservedAt, activeJobId }: Options) {
+  const qc = useQueryClient();
+  const activeJobIdRef = useRef(activeJobId);
+  activeJobIdRef.current = activeJobId;
   const inFlightRef = useRef(false);
+  const lastSpawnAtRef = useRef(0);
 
   useEffect(() => {
     if (!enabled || !siteId) return;
 
     async function tick() {
-      if (activeJobId || inFlightRef.current) return;
+      if (activeJobIdRef.current || inFlightRef.current) return;
+      if (Date.now() - lastSpawnAtRef.current < SYNC_INTERVALS.checkMs) return;
       if (!isObservedStale(lastObservedAt, SYNC_INTERVALS.siteInfoStaleMs)) return;
 
       inFlightRef.current = true;
+      lastSpawnAtRef.current = Date.now();
       try {
-        const result = await apiFetch<{ jobId: string }>(`/sites/${siteId}/info`, { method: "POST" });
-        onJobStartedRef.current(result.jobId);
+        await apiFetch<{ jobId: string }>(`/sites/${siteId}/info`, { method: "POST" });
+        window.setTimeout(() => {
+          void qc.invalidateQueries({ queryKey: ["site", siteId] });
+        }, 5000);
       } catch {
         /* próxima verificação tenta de novo */
       } finally {
@@ -44,5 +44,5 @@ export function useAutoSiteSync({
     void tick();
     const timer = setInterval(() => void tick(), SYNC_INTERVALS.checkMs);
     return () => clearInterval(timer);
-  }, [enabled, siteId, lastObservedAt, activeJobId]);
+  }, [enabled, siteId, lastObservedAt, qc]);
 }

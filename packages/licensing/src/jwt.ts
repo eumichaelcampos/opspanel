@@ -48,15 +48,26 @@ const entitlementsSchemaKeys = [
   "maxJobsPerMonth",
   "maxApiKeys",
   "maxMembers",
+  "maxMailboxes",
+  "maxEmailDomains",
+  "emailDeliveryMonthly",
   "aiAssistant",
   "mcpEnabled",
 ] as const;
 
+const PLAN_EMAIL_DEFAULTS: Record<PlanTier, Pick<Entitlements, "maxMailboxes" | "maxEmailDomains" | "emailDeliveryMonthly">> = {
+  free: { maxMailboxes: 0, maxEmailDomains: 0, emailDeliveryMonthly: 0 },
+  pro: { maxMailboxes: 3, maxEmailDomains: 3, emailDeliveryMonthly: 5000 },
+  business: { maxMailboxes: 10, maxEmailDomains: null, emailDeliveryMonthly: 25000 },
+  full_free: { maxMailboxes: 10, maxEmailDomains: null, emailDeliveryMonthly: 25000 },
+};
+
 function parseEntitlementsPayload(raw: Record<string, unknown>): Entitlements {
   const plan = raw.plan as PlanTier;
-  if (!["free", "pro", "business"].includes(plan)) {
+  if (!["free", "pro", "business", "full_free"].includes(plan)) {
     throw new Error("Invalid plan in license JWT.");
   }
+  const emailDefaults = PLAN_EMAIL_DEFAULTS[plan];
   return {
     plan,
     maxServers: raw.maxServers as number | null,
@@ -64,6 +75,10 @@ function parseEntitlementsPayload(raw: Record<string, unknown>): Entitlements {
     maxJobsPerMonth: raw.maxJobsPerMonth as number | null,
     maxApiKeys: raw.maxApiKeys as number | null,
     maxMembers: raw.maxMembers as number | null,
+    maxMailboxes: (raw.maxMailboxes as number | null | undefined) ?? emailDefaults.maxMailboxes,
+    maxEmailDomains: (raw.maxEmailDomains as number | null | undefined) ?? emailDefaults.maxEmailDomains,
+    emailDeliveryMonthly:
+      (raw.emailDeliveryMonthly as number | null | undefined) ?? emailDefaults.emailDeliveryMonthly,
     aiAssistant: Boolean(raw.aiAssistant),
     mcpEnabled: raw.mcpEnabled !== false,
   };

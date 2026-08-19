@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { JobStatus, Prisma } from "@opspanel/database";
+import { QuotasService } from "../license/quotas.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "../queue/queue.service";
 
@@ -8,6 +9,7 @@ export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
+    private readonly quotas: QuotasService,
   ) {}
 
   async createOperationJob(params: {
@@ -18,6 +20,8 @@ export class JobsService {
     input: Record<string, unknown>;
     idempotencyKey?: string;
   }): Promise<{ id: string; status: JobStatus }> {
+    await this.quotas.assertCanCreateJob();
+
     const job = await this.prisma.client.job.create({
       data: {
         organizationId: params.organizationId,
@@ -43,6 +47,8 @@ export class JobsService {
       { jobId: job.id },
       { removeOnComplete: 100, removeOnFail: 100 },
     );
+
+    await this.quotas.incrementMetric("jobs_month");
 
     return job;
   }

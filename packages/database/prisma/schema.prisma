@@ -64,6 +64,7 @@ model User {
   auditLogs   AuditLog[]
   apiKeys     ApiKey[]
   updateDismissals UserUpdateDismissal[]
+  secrets    UserSecret[]
 }
 
 model Session {
@@ -75,6 +76,57 @@ model Session {
   createdAt DateTime @default(now())
   ipAddress String?
   userAgent String?
+}
+
+enum UserSecretKind {
+  openai_api_key
+  openai_codex_oauth
+  cloudflare_credentials
+  google_drive
+}
+
+enum BackupContents {
+  files_and_database
+  files_only
+  database_only
+}
+
+enum BackupSchedule {
+  off
+  daily
+  every_12h
+  weekly
+}
+
+enum EmailDomainStatus {
+  draft
+  pending_dns
+  active
+  error
+}
+
+enum EmailProviderKind {
+  atriomail
+  resend
+}
+
+model UserSecret {
+  id         String         @id @default(uuid())
+  userId     String
+  kind       UserSecretKind
+  label      String?
+  hint       String?
+  ciphertext String
+  iv         String
+  authTag    String
+  keyVersion Int            @default(1)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind])
+  @@index([userId])
 }
 
 enum SiteStatus {
@@ -99,6 +151,7 @@ model Organization {
   jobs    Job[]
   auditLogs AuditLog[]
   apiKeys ApiKey[]
+  emailDomains EmailDomain[]
 }
 
 model OrganizationMember {
@@ -163,22 +216,106 @@ model Site {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   server       Server       @relation(fields: [serverId], references: [id], onDelete: Cascade)
   ftpUsers     SiteFtpUser[]
+  backupPolicy SiteBackupPolicy?
+  emailDomain  EmailDomain?
+  smtpProfile  EmailSmtpProfile?
 
   @@unique([organizationId, domain])
   @@index([serverId])
 }
 
+model SiteBackupPolicy {
+  id             String          @id @default(uuid())
+  siteId         String          @unique
+  contents       BackupContents  @default(files_and_database)
+  keepLocal      Int             @default(7)
+  schedule       BackupSchedule  @default(off)
+  scheduleHour   Int             @default(3)
+  uploadToDrive  Boolean         @default(false)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([nextRunAt])
+}
+
 model SiteFtpUser {
-  id        String   @id @default(uuid())
-  siteId    String
-  username  String
-  homePath  String
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  siteId      String
+  username    String
+  homePath    String
+  passwordEnc Json?
+  createdAt   DateTime @default(now())
 
   site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, username])
   @@index([siteId])
+}
+
+model EmailDomain {
+  id               String            @id @default(uuid())
+  organizationId   String
+  siteId           String?           @unique
+  domain           String
+  provider         EmailProviderKind @default(atriomail)
+  providerDomainId String?
+  status           EmailDomainStatus @default(draft)
+  webmailUrl       String?
+  dnsBundle        Json?
+  lastHealthAt     DateTime?
+  healthSnapshot   Json?
+  errorMessage     String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  mailboxes    EmailMailbox[]
+  smtpProfiles EmailSmtpProfile[]
+
+  @@unique([organizationId, domain])
+  @@index([organizationId])
+}
+
+model EmailMailbox {
+  id                String   @id @default(uuid())
+  emailDomainId     String
+  localPart         String
+  displayName       String?
+  providerMailboxId String?
+  quotaMb           Int      @default(10240)
+  status            String   @default("active")
+  imapHost          String?
+  smtpHost          String?
+  webmailUrl        String?
+  createdByUserId   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  emailDomain EmailDomain @relation(fields: [emailDomainId], references: [id], onDelete: Cascade)
+
+  @@unique([emailDomainId, localPart])
+  @@index([emailDomainId])
+}
+
+model EmailSmtpProfile {
+  id            String            @id @default(uuid())
+  siteId        String            @unique
+  emailDomainId String?
+  provider      EmailProviderKind @default(resend)
+  fromAddress   String
+  fromName      String?
+  providerRef   String?
+  wpConfigured  Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  site        Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  emailDomain EmailDomain? @relation(fields: [emailDomainId], references: [id], onDelete: SetNull)
 }
 
 model ServerCredential {
@@ -316,6 +453,14 @@ model SystemSetupState {
   id          String    @id @default("default")
   completed   Boolean   @default(false)
   completedAt DateTime?
+  /** Domínio público do painel, ex: painel.empresa.com */
+  panelDomain String?
+  /** URL canônica, ex: https://painel.empresa.com */
+  panelUrl    String?
+  googleDriveClientId String?
+  googleDriveClientSecretCipher String?
+  googleDriveClientSecretIv     String?
+  googleDriveClientSecretAuthTag String?
   updatedAt   DateTime  @updatedAt
 }
 

@@ -199,7 +199,7 @@ function componentRunning(components: StackComponentState[] | undefined, id: str
   return Boolean(c?.installed && c?.running);
 }
 
-const WEB_STACK_IDS = new Set(["nginx", "mysql", "redis", "php74", "php80", "php81", "php82", "php83"]);
+const WEB_STACK_IDS = new Set(["nginx", "mysql", "redis", "php74", "php80", "php81", "php82", "php83", "php84"]);
 
 /** Servidor já tinha WordOps antes do wizard (não está instalando do zero). */
 export function isExistingWordOpsServer(ctx: ServerOnboardingContext): boolean {

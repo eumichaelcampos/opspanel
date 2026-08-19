@@ -17,6 +17,12 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const session = request.cookies.get(SESSION_COOKIE)?.value;
 
+  if (pathname === "/login" && request.nextUrl.searchParams.get("logout") === "1") {
+    const res = NextResponse.next();
+    res.cookies.delete(SESSION_COOKIE);
+    return res;
+  }
+
   if (pathname === "/login" && session) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }

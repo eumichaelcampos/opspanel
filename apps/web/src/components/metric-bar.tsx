@@ -8,7 +8,7 @@ type MetricBarProps = {
 
 export function MetricBar({ label, pct, detail }: MetricBarProps) {
   const level = pct == null ? "ok" : pct >= 90 ? "critical" : pct >= 75 ? "warn" : "ok";
-  const barColor = level === "critical" ? "bg-danger" : level === "warn" ? "bg-warning" : "bg-accent";
+  const barColor = level === "critical" ? "bg-danger" : level === "warn" ? "bg-warning" : "bg-success";
   const display = detail ?? (pct != null ? `${pct}%` : "—");
 
   return (
