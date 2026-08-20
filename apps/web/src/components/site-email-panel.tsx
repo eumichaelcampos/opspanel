@@ -134,6 +134,22 @@ export function SiteEmailPanel({ siteId }: { siteId: string }) {
   const health = data?.emailDomain?.health;
   const mailboxLimit = data?.quotas.limits.mailboxes ?? 0;
   const mailboxUsed = data?.quotas.usage.mailboxes ?? 0;
+  const domainLimit = data?.quotas.limits.email_domains ?? 0;
+  const domainUsed = data?.quotas.usage.email_domains ?? 0;
+  const hasMailboxQuota = mailboxLimit === null || mailboxLimit > 0;
+  const hasDomainQuota = domainLimit === null || domainLimit > 0;
+  const mailboxQuotaLabel =
+    mailboxLimit === null
+      ? `${mailboxUsed} caixas (contrato ilimitado)`
+      : mailboxLimit === 0
+        ? "Nenhuma caixa contratada"
+        : `${mailboxUsed} / ${mailboxLimit} caixas contratadas`;
+  const domainQuotaLabel =
+    domainLimit === null
+      ? `${domainUsed} domínios (contrato ilimitado)`
+      : domainLimit === 0
+        ? "Nenhum domínio contratado"
+        : `${domainUsed} / ${domainLimit} domínios contratados`;
   const canCreateMailbox =
     data?.quotas.limits.mailboxes === null ||
     (data?.quotas.limits.mailboxes !== undefined && mailboxUsed < data.quotas.limits.mailboxes);
@@ -170,16 +186,20 @@ export function SiteEmailPanel({ siteId }: { siteId: string }) {
         </div>
         <p className="text-sm text-muted">
           Caixas @{domain} hospedadas fora do seu VPS. Requer Cloudflare conectado para publicar MX/SPF automaticamente.
+          E-mail é um add-on pago: as caixas são contratadas separadamente e vinculadas à sua licença.
         </p>
         <p className="text-xs text-muted">
-          Plano: {mailboxUsed ?? 0} / {mailboxLimit === null ? "∞" : mailboxLimit} caixas ·{" "}
-          {data.quotas.usage.email_domains} /{" "}
-          {data.quotas.limits.email_domains === null ? "∞" : data.quotas.limits.email_domains} domínios
+          {mailboxQuotaLabel} · {domainQuotaLabel}
         </p>
+        {!hasDomainQuota ? (
+          <p className="rounded-card border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-ink">
+            Nenhum domínio de e-mail contratado. Peça ao administrador do OpsPanel para incluir e-mail na sua licença.
+          </p>
+        ) : null}
         <button
           type="button"
           className="btn-primary"
-          disabled={activateMutation.isPending || (data.quotas.limits.email_domains === 0)}
+          disabled={activateMutation.isPending || !hasDomainQuota}
           onClick={() => activateMutation.mutate()}
         >
           {activateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
@@ -229,10 +249,13 @@ export function SiteEmailPanel({ siteId }: { siteId: string }) {
       <section className="glass-card space-y-4 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">Caixas de e-mail</h3>
-          <span className="text-xs text-muted">
-            {ed.mailboxes.length} / {mailboxLimit === null ? "∞" : mailboxLimit} do plano
-          </span>
+          <span className="text-xs text-muted">{mailboxQuotaLabel}</span>
         </div>
+        {!hasMailboxQuota ? (
+          <p className="rounded-card border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-ink">
+            Nenhuma caixa contratada nesta licença. Solicite a contratação ao administrador do OpsPanel.
+          </p>
+        ) : null}
         {ed.mailboxes.length === 0 ? (
           <p className="text-sm text-muted">Nenhuma caixa criada ainda.</p>
         ) : (

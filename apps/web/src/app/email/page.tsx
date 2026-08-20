@@ -37,13 +37,16 @@ export default function EmailHubPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">E-mail da organização</h1>
             <p className="mt-1 text-sm text-muted">
-              Caixas hospedadas fora dos servidores WordOps. DNS via Cloudflare quando conectado.
+              Caixas hospedadas fora dos servidores WordOps. Contratação separada do plano OpsPanel.
             </p>
           </div>
           <div className="rounded-card border border-ink/10 bg-white/60 px-4 py-2 text-sm">
             <p>
-              Caixas: {data?.quotas.usage.mailboxes ?? 0} /{" "}
-              {data?.quotas.limits.mailboxes === null ? "∞" : data?.quotas.limits.mailboxes ?? 0}
+              {data?.quotas.limits.mailboxes === null
+                ? `${data?.quotas.usage.mailboxes ?? 0} caixas (contrato ilimitado)`
+                : (data?.quotas.limits.mailboxes ?? 0) === 0
+                  ? "Nenhuma caixa contratada"
+                  : `Caixas: ${data?.quotas.usage.mailboxes ?? 0} / ${data?.quotas.limits.mailboxes}`}
             </p>
             <p className="text-xs text-muted">
               Provedor caixas: {data?.provider.mailboxConfigured ? "Atriomail OK" : "Não configurado"}
@@ -100,7 +103,7 @@ export default function EmailHubPage() {
             <p className="font-medium text-ink">Como funciona</p>
             <p className="mt-1">
               O OpsPanel provisiona caixas no Atriomail (API central) e publica MX/SPF/DKIM no Cloudflare. O VPS WordOps não
-              roda Postfix nem consome RAM com e-mail.
+              roda Postfix nem consome RAM com e-mail. Caixas e domínios são add-ons pagos, definidos na licença de cada cliente.
             </p>
           </div>
         </section>

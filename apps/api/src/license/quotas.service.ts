@@ -148,7 +148,11 @@ export class QuotasService {
   async assertCanCreateMailbox() {
     const snap = await this.getEmailUsageSnapshot();
     if (!isWithinLimit(snap.usage.mailboxes, snap.limits.mailboxes)) {
-      this.quotaError("QUOTA_EXCEEDED", "Limite de caixas de e-mail do plano atingido.", {
+      const message =
+        snap.limits.mailboxes === 0
+          ? "Nenhuma caixa de e-mail contratada nesta licença. Solicite a contratação ao administrador do OpsPanel."
+          : "Limite de caixas de e-mail contratadas atingido.";
+      this.quotaError("QUOTA_EXCEEDED", message, {
         limit: snap.limits.mailboxes,
         usage: snap.usage.mailboxes,
         plan: snap.plan,
@@ -159,7 +163,11 @@ export class QuotasService {
   async assertCanCreateEmailDomain() {
     const snap = await this.getEmailUsageSnapshot();
     if (!isWithinLimit(snap.usage.email_domains, snap.limits.email_domains)) {
-      this.quotaError("QUOTA_EXCEEDED", "Limite de domínios de e-mail do plano atingido.", {
+      const message =
+        snap.limits.email_domains === 0
+          ? "Nenhum domínio de e-mail contratado nesta licença. Solicite a contratação ao administrador do OpsPanel."
+          : "Limite de domínios de e-mail contratados atingido.";
+      this.quotaError("QUOTA_EXCEEDED", message, {
         limit: snap.limits.email_domains,
         usage: snap.usage.email_domains,
         plan: snap.plan,

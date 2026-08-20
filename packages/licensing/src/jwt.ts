@@ -57,9 +57,9 @@ const entitlementsSchemaKeys = [
 
 const PLAN_EMAIL_DEFAULTS: Record<PlanTier, Pick<Entitlements, "maxMailboxes" | "maxEmailDomains" | "emailDeliveryMonthly">> = {
   free: { maxMailboxes: 0, maxEmailDomains: 0, emailDeliveryMonthly: 0 },
-  pro: { maxMailboxes: 3, maxEmailDomains: 3, emailDeliveryMonthly: 5000 },
-  business: { maxMailboxes: 10, maxEmailDomains: null, emailDeliveryMonthly: 25000 },
-  full_free: { maxMailboxes: 10, maxEmailDomains: null, emailDeliveryMonthly: 25000 },
+  pro: { maxMailboxes: 0, maxEmailDomains: 0, emailDeliveryMonthly: 0 },
+  business: { maxMailboxes: 0, maxEmailDomains: 0, emailDeliveryMonthly: 0 },
+  full_free: { maxMailboxes: 0, maxEmailDomains: 0, emailDeliveryMonthly: 0 },
 };
 
 function parseEntitlementsPayload(raw: Record<string, unknown>): Entitlements {

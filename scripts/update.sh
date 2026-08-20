@@ -10,10 +10,12 @@ git fetch origin main
 git pull origin main
 
 echo "==> Installing dependencies..."
+export CI=1
+NODE_ENV=development
 if command -v pnpm >/dev/null 2>&1; then
-  pnpm install --frozen-lockfile
+  NODE_ENV=development pnpm install --frozen-lockfile
 elif command -v corepack >/dev/null 2>&1; then
-  corepack pnpm install --frozen-lockfile
+  NODE_ENV=development corepack pnpm install --frozen-lockfile
 else
   echo "pnpm not found. Install Node 20+ and enable corepack."
   exit 1

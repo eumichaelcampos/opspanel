@@ -353,13 +353,16 @@ export default function PlanSettingsPage() {
               <UsageBar label="Membros" used={data.usage.usage.members ?? 0} limit={data.usage.limits.members} />
               {data.emailUsage ? (
                 <>
+                  <p className="text-xs text-muted">
+                    E-mail é add-on pago. Caixas e domínios são definidos na licença, não inclusos no plano base.
+                  </p>
                   <UsageBar
-                    label="Caixas de e-mail"
+                    label="Caixas de e-mail (contratadas)"
                     used={data.emailUsage.usage.mailboxes}
                     limit={data.emailUsage.limits.mailboxes}
                   />
                   <UsageBar
-                    label="Domínios de e-mail"
+                    label="Domínios de e-mail (contratados)"
                     used={data.emailUsage.usage.email_domains}
                     limit={data.emailUsage.limits.email_domains}
                   />
