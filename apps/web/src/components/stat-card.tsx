@@ -16,7 +16,7 @@ type StatCardProps = {
 
 export function StatCard({ label, value, hint, trend, icon: Icon, iconClass, spark }: StatCardProps) {
   return (
-    <div className="glass-card group relative overflow-hidden p-5 transition hover:shadow-lg">
+    <div className="glass-card group relative overflow-hidden p-5 transition hover:shadow-lg dark:hover:shadow-glow-accent/40">
       <div className="flex items-start justify-between gap-3">
         <div
           className={cn(
@@ -30,7 +30,7 @@ export function StatCard({ label, value, hint, trend, icon: Icon, iconClass, spa
           <Sparkline
             data={spark}
             className="opacity-70"
-            color={trend?.positive === false ? "#B54848" : trend?.positive ? "#287A5A" : "#C96D3A"}
+            color={trend?.positive === false ? "#F87171" : trend?.positive ? "#2DD4BF" : "#8B5CF6"}
           />
         ) : null}
       </div>

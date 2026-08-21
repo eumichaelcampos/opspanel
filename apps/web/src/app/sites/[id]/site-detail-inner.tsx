@@ -12,6 +12,8 @@ import { SiteManagePanel, getManageActionTitle } from "@/components/site-manage-
 import { SiteDetailTabs, type SiteDetailTab } from "@/components/site-detail-tabs";
 import { SiteCloudflarePanel } from "@/components/site-cloudflare-panel";
 import { SiteEmailPanel } from "@/components/site-email-panel";
+import { SiteWordpressPanel } from "@/components/site-wordpress-panel";
+import { SiteStagingPanel } from "@/components/site-staging-panel";
 import { SiteDnsAlert } from "@/components/site-dns-alert";
 import { SiteInventorySummary } from "@/components/site-inventory-summary";
 import { OperationTerminal } from "@/components/operation-terminal";
@@ -94,7 +96,15 @@ type OpsFeedback = {
   message: string;
 };
 
-const OPS_JOB_OPERATIONS = new Set(["site.manage", "site.backup", "site.restore", "site.update.domain", "site.delete"]);
+const OPS_JOB_OPERATIONS = new Set([
+  "site.manage",
+  "site.backup",
+  "site.restore",
+  "site.rollback",
+  "site.clone",
+  "site.update.domain",
+  "site.delete",
+]);
 
 function dashboardUrl(host: string, path: string): string {
   return `https://${host}:22222${path}`;
@@ -137,6 +147,8 @@ export default function SiteDetailPageInner() {
     tabFromUrl === "files" ||
     tabFromUrl === "database" ||
     tabFromUrl === "ops" ||
+    tabFromUrl === "wordpress" ||
+    tabFromUrl === "staging" ||
     tabFromUrl === "backup" ||
     tabFromUrl === "domain" ||
     tabFromUrl === "cloudflare" ||
@@ -206,12 +218,13 @@ export default function SiteDetailPageInner() {
   });
 
   const restoreMutation = useMutation({
-    mutationFn: (target: { path?: string; driveFolderId?: string }) =>
+    mutationFn: (target: { path?: string; driveFolderId?: string; mode?: string }) =>
       apiFetch<{ jobId: string }>(`/sites/${params.id}/restore`, {
         method: "POST",
         body: JSON.stringify({
           backupPath: target.path || undefined,
           driveFolderId: target.path ? undefined : target.driveFolderId,
+          mode: target.mode ?? "full",
         }),
       }),
     onSuccess: (r, target) => {
@@ -221,6 +234,36 @@ export default function SiteDetailPageInner() {
       setOpsFeedback(null);
       setActiveJobId(r.jobId);
       setActiveTab("backup");
+    },
+  });
+
+  const cloneMutation = useMutation({
+    mutationFn: (payload: { targetDomain: string; asStaging: boolean }) =>
+      apiFetch<{ jobId: string }>(`/sites/${params.id}/clone`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (r) => {
+      setPendingActionId("clone");
+      setOpsJobActive(true);
+      setOpsFeedback(null);
+      setActiveJobId(r.jobId);
+      setActiveTab("staging");
+    },
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ jobId: string }>(`/sites/${params.id}/rollback`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (r) => {
+      setPendingActionId("rollback");
+      setOpsJobActive(true);
+      setOpsFeedback(null);
+      setActiveJobId(r.jobId);
+      setActiveTab("staging");
     },
   });
 
@@ -280,6 +323,7 @@ export default function SiteDetailPageInner() {
       void qc.invalidateQueries({ queryKey: ["site", params.id] });
       void qc.invalidateQueries({ queryKey: ["site-backups", params.id] });
       void qc.invalidateQueries({ queryKey: ["sites"] });
+      void qc.invalidateQueries({ queryKey: ["staging-hub"] });
       void qc.invalidateQueries({ queryKey: ["server", site?.server.id] });
       void refetch();
       if (!completedJobId) return;
@@ -305,7 +349,11 @@ export default function SiteDetailPageInner() {
                 ? "Backup concluído"
                 : job.operationKey === "site.restore"
                   ? "Backup restaurado"
-                  : job.operationKey === "site.delete"
+                  : job.operationKey === "site.rollback"
+                    ? "Rollback concluído"
+                    : job.operationKey === "site.clone"
+                      ? "Clone concluído"
+                      : job.operationKey === "site.delete"
                   ? "Site excluído"
                   : "Operação concluída");
             const deleteResult = job.resultJson as { backup?: { backupPath?: string } } | undefined;
@@ -656,9 +704,44 @@ export default function SiteDetailPageInner() {
           </>
           ) : null}
 
+          {activeTab === "staging" ? (
+          <>
+          {activeJobId && opsJobActive && (pendingActionId === "clone" || pendingActionId === "rollback") ? (
+            <OperationTerminal
+              jobId={activeJobId}
+              onComplete={(status) => onJobComplete(status)}
+              onDismiss={() => {
+                setActiveJobId(null);
+                setPendingActionId(null);
+                setOpsJobActive(false);
+              }}
+            />
+          ) : null}
+
+          <section className="glass-card p-5">
+            <div className="mb-5">
+              <h2 className="text-lg font-semibold">Staging e rollback</h2>
+              <p className="text-sm text-muted">
+                Clone este site para um domínio de testes ou reverta ao último backup após uma atualização.
+              </p>
+            </div>
+            <SiteStagingPanel
+              domain={site.domain}
+              disabled={actionsDisabled}
+              clonePending={pendingActionId === "clone" && Boolean(activeJobId)}
+              rollbackPending={pendingActionId === "rollback" && Boolean(activeJobId)}
+              onClone={(targetDomain, asStaging) => cloneMutation.mutate({ targetDomain, asStaging })}
+              onRollback={() => rollbackMutation.mutate()}
+              cloneError={cloneMutation.error ? (cloneMutation.error as Error).message : null}
+              rollbackError={rollbackMutation.error ? (rollbackMutation.error as Error).message : null}
+            />
+          </section>
+          </>
+          ) : null}
+
           {activeTab === "backup" ? (
           <>
-          {activeJobId && opsJobActive && (pendingActionId === "backup" || pendingActionId === "restore") ? (
+          {activeJobId && opsJobActive && (pendingActionId === "backup" || pendingActionId === "restore" || pendingActionId === "rollback") ? (
             <OperationTerminal
               jobId={activeJobId}
               onComplete={(status) => onJobComplete(status)}
@@ -681,16 +764,26 @@ export default function SiteDetailPageInner() {
               domain={site.domain}
               disabled={actionsDisabled}
               backupPending={pendingActionId === "backup" && Boolean(activeJobId)}
-              restorePending={pendingActionId === "restore" && Boolean(activeJobId)}
+              restorePending={
+                (pendingActionId === "restore" || pendingActionId === "rollback") && Boolean(activeJobId)
+              }
               restoreTargetPath={restoreTargetPath}
               onBackup={() => backupMutation.mutate()}
               onRestore={(target) => restoreMutation.mutate(target)}
+              onRollbackLatest={() => {
+                setActiveTab("staging");
+                rollbackMutation.mutate();
+              }}
+              rollbackPending={pendingActionId === "rollback" && Boolean(activeJobId)}
             />
             {backupMutation.error ? (
               <p className="mt-4 text-sm text-danger">{(backupMutation.error as Error).message}</p>
             ) : null}
             {restoreMutation.error ? (
               <p className="mt-4 text-sm text-danger">{(restoreMutation.error as Error).message}</p>
+            ) : null}
+            {rollbackMutation.error ? (
+              <p className="mt-4 text-sm text-danger">{(rollbackMutation.error as Error).message}</p>
             ) : null}
           </section>
           </>
@@ -841,6 +934,8 @@ export default function SiteDetailPageInner() {
           ) : null}
 
           {activeTab === "email" && site ? <SiteEmailPanel siteId={site.id} /> : null}
+
+          {activeTab === "wordpress" && site ? <SiteWordpressPanel siteId={site.id} /> : null}
 
           {activeTab === "access" && site ? (
             <SiteFtpPanel

@@ -151,6 +151,9 @@ export function SiteDnsAlert({ siteId, serverIpHint }: SiteDnsAlertProps) {
                 ) : null}
               </div>
               <div className="flex flex-col items-end gap-2">
+                <Link href={`/dns`} className="text-xs text-accent hover:underline">
+                  Abrir DNS Doctor
+                </Link>
                 <Link
                   href={`/sites/${siteId}?tab=cloudflare`}
                   className="text-xs text-accent hover:underline"

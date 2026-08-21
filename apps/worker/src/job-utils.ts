@@ -76,6 +76,9 @@ export async function markJobFailed(jobId: string, error: unknown) {
   });
   const nextSequence = (lastEvent?.sequence ?? 0) + 1;
   await appendEvent(jobId, nextSequence, "error", message, 100);
+
+  const { notifyJobFailed } = await import("./alerts-notify.js");
+  void notifyJobFailed(jobId, message);
 }
 
 export async function updateJobResult(jobId: string, resultJson: Prisma.InputJsonValue) {

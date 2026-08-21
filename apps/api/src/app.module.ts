@@ -23,6 +23,14 @@ import { SettingsModule } from "./settings/settings.module";
 import { CodexModule } from "./codex/codex.module";
 import { GoogleDriveModule } from "./google-drive/google-drive.module";
 import { EmailModule } from "./email/email.module";
+import { SecurityModule } from "./security/security.module";
+import { WordpressModule } from "./wordpress/wordpress.module";
+import { BackupsModule } from "./backups/backups.module";
+import { DnsModule } from "./dns/dns.module";
+import { StagingModule } from "./staging/staging.module";
+import { PerformanceModule } from "./performance/performance.module";
+import { PlaybooksModule } from "./playbooks/playbooks.module";
+import { AlertsModule } from "./alerts/alerts.module";
 
 @Module({
   imports: [
@@ -41,6 +49,14 @@ import { EmailModule } from "./email/email.module";
     CodexModule,
     GoogleDriveModule,
     EmailModule,
+    SecurityModule,
+    WordpressModule,
+    BackupsModule,
+    DnsModule,
+    StagingModule,
+    PerformanceModule,
+    PlaybooksModule,
+    AlertsModule,
     AssistantModule,
     ReportsModule,
     OrganizationsModule,

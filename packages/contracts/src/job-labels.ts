@@ -11,6 +11,8 @@ const LABELS: Record<string, string> = {
   "server.wordops.dashboard.recover": "Recuperar dashboard WordOps",
   "server.stack.migrate": "Migrar stack",
   "server.ufw.configure": "Configurar UFW",
+  "server.security.scan": "Scan de segurança",
+  "server.playbook.run": "Executar playbook",
   "server.delete": "Excluir servidor",
   "server.reboot": "Reiniciar servidor",
   "server.stack.restart": "Reiniciar stack",
@@ -19,6 +21,8 @@ const LABELS: Record<string, string> = {
   "site.manage": "Gerenciar site",
   "site.backup": "Backup do site",
   "site.restore": "Restaurar backup",
+  "site.rollback": "Rollback do site",
+  "site.clone": "Clonar site (staging)",
   "site.delete": "Excluir site",
   "site.update.domain": "Alterar domínio",
   "site.ftp.user.create": "Criar usuário FTP",
@@ -29,6 +33,8 @@ const LABELS: Record<string, string> = {
   "site.email.mailbox.create": "Criar caixa de e-mail",
   "site.email.mailbox.delete": "Excluir caixa de e-mail",
   "site.email.health.check": "Verificar saúde do e-mail",
+  "site.wp.inventory": "Inventário WordPress",
+  "site.wp.update": "Atualizar WordPress",
 };
 
 export function jobOperationLabel(operationKey: string): string {

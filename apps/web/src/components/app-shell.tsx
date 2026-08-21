@@ -16,8 +16,15 @@ import {
   BarChart3,
   Bot,
   User,
+  ShieldCheck,
+  LayoutTemplate,
+  Archive,
+  Network,
+  Copy,
+  Workflow,
 } from "lucide-react";
 import { UpdateNotification } from "@/components/update-notification";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 
@@ -25,7 +32,13 @@ const mainNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/servers", label: "Servidores", icon: Server },
   { href: "/sites", label: "Sites", icon: Globe },
+  { href: "/wordpress", label: "WordPress", icon: LayoutTemplate },
+  { href: "/staging", label: "Staging", icon: Copy },
+  { href: "/backups", label: "Backups", icon: Archive },
+  { href: "/dns", label: "DNS", icon: Network },
   { href: "/email", label: "E-mail", icon: Mail },
+  { href: "/security", label: "Segurança", icon: ShieldCheck },
+  { href: "/automation", label: "Automação", icon: Workflow, match: ["/automation", "/performance", "/alerts"] },
   { href: "/reports", label: "Relatórios", icon: BarChart3 },
   { href: "/assistant", label: "Assistente IA", icon: Bot },
 ];
@@ -50,7 +63,7 @@ function NavSection({
   pathname,
 }: {
   title: string;
-  items: { href: string; label: string; icon: typeof LayoutDashboard }[];
+  items: { href: string; label: string; icon: typeof LayoutDashboard; match?: string[] }[];
   pathname: string;
 }) {
   return (
@@ -59,18 +72,24 @@ function NavSection({
       <div className="flex flex-col gap-0.5">
         {items.map((item) => {
           const Icon = item.icon;
-          const active =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href));
+          const active = item.match
+            ? item.match.some((m) => pathname === m || pathname.startsWith(`${m}/`))
+            : pathname === item.href ||
+              (item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
-                active ? "bg-white/85 text-accent shadow-sm" : "text-muted hover:bg-white/45 hover:text-ink",
+                "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
+                active
+                  ? "bg-[color:var(--nav-active-bg)] text-[color:var(--nav-active-fg)] shadow-sm dark:shadow-glow-accent/30"
+                  : "text-muted hover:bg-[color:var(--nav-hover-bg)] hover:text-ink",
               )}
             >
+              {active ? (
+                <span className="absolute left-0 top-1/2 hidden h-6 w-1 -translate-y-1/2 rounded-r-full bg-accent dark:block" />
+              ) : null}
               <Icon className="h-4 w-4" />
               {item.label}
             </Link>
@@ -125,10 +144,10 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
           <NavSection title="Conta" items={settingsNav} pathname={pathname} />
         </nav>
 
-        <div className="mt-auto shrink-0 space-y-2 border-t border-white/60 px-5 py-4">
+        <div className="mt-auto shrink-0 space-y-2 border-t border-ink/10 px-5 py-4 dark:border-white/10">
           <Link
             href="/servers/new"
-            className="flex items-center justify-center gap-2 rounded-xl bg-accent px-3 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-95"
+            className="flex items-center justify-center gap-2 rounded-xl bg-accent px-3 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-95 dark:shadow-glow-accent"
           >
             <Plus className="h-4 w-4" />
             Novo servidor
@@ -137,7 +156,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
           <button
             type="button"
             onClick={() => void logout()}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/80 bg-white/50 px-3 py-2.5 text-sm font-medium text-muted transition hover:bg-white/80 hover:text-ink"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-ink/10 bg-surface/40 px-3 py-2.5 text-sm font-medium text-muted transition hover:bg-surface/70 hover:text-ink dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
           >
             <LogOut className="h-4 w-4" />
             Sair
@@ -152,15 +171,18 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
             <p className="text-xs text-muted">{me?.user.organizationName ?? "Organização"}</p>
             <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
           </div>
-          <Link href="/settings/profile" className="flex items-center gap-3 transition hover:opacity-90">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-medium text-ink">{displayName}</p>
-              <p className="text-xs capitalize text-muted">{me?.user.role ?? "operador"}</p>
-            </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-accent/80 to-accent text-sm font-semibold text-white shadow-sm">
-              {initials(me?.user.email, me?.user.name)}
-            </div>
-          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <ThemeToggle />
+            <Link href="/settings/profile" className="flex items-center gap-3 transition hover:opacity-90">
+              <div className="hidden text-right sm:block">
+                <p className="text-sm font-medium text-ink">{displayName}</p>
+                <p className="text-xs capitalize text-muted">{me?.user.role ?? "operador"}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-accent/80 to-accent text-sm font-semibold text-white shadow-sm dark:from-violet-400 dark:to-indigo-500">
+                {initials(me?.user.email, me?.user.name)}
+              </div>
+            </Link>
+          </div>
         </header>
 
         <main className={cn("flex-1", isDashboard ? "" : "glass-panel p-5 lg:p-6")}>{children}</main>

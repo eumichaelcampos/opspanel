@@ -86,4 +86,6 @@ export function parseOsPrettyName(osRelease: string): string | undefined {
 
 export * from "./site-ops.js";
 export * from "./server-ops.js";
+export * from "./security-ops.js";
+export * from "./wp-ops.js";
 export * from "./netdata-client.js";

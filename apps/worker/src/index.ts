@@ -36,6 +36,8 @@ import {
   processSiteManage,
   processSiteBackup,
   processSiteRestore,
+  processSiteClone,
+  processSiteRollback,
   processSiteDelete,
   processSiteUpdateDomain,
 } from "./site-processors.js";
@@ -46,6 +48,8 @@ import {
   processSiteEmailMailboxCreate,
   processSiteEmailMailboxDelete,
 } from "./email-processors.js";
+import { processSiteWpInventory, processSiteWpUpdate } from "./wordpress-processors.js";
+import { processPlaybookRun } from "./playbook-processors.js";
 import {
   processServerHealthCollect,
   processServerMaintenance,
@@ -54,6 +58,7 @@ import {
   processServerStackAction,
   processServerStackMigrate,
   processServerUfwConfigure,
+  processServerSecurityScan,
   processServerWordOpsInstall,
   processServerWordOpsDashboardRecover,
   processServerReboot,
@@ -564,6 +569,22 @@ async function main() {
 
         }
 
+        if (record.operationKey === OperationKeys.ServerSecurityScan) {
+
+          await processServerSecurityScan(jobId);
+
+          return;
+
+        }
+
+        if (record.operationKey === OperationKeys.ServerPlaybookRun) {
+
+          await processPlaybookRun(jobId);
+
+          return;
+
+        }
+
         if (record.operationKey === OperationKeys.ServerReboot) {
 
           await processServerReboot(jobId);
@@ -583,6 +604,22 @@ async function main() {
         if (record.operationKey === OperationKeys.SiteInfo) {
 
           await processSiteInfo(jobId);
+
+          return;
+
+        }
+
+        if (record.operationKey === OperationKeys.SiteWpInventory) {
+
+          await processSiteWpInventory(jobId);
+
+          return;
+
+        }
+
+        if (record.operationKey === OperationKeys.SiteWpUpdate) {
+
+          await processSiteWpUpdate(jobId);
 
           return;
 
@@ -615,6 +652,22 @@ async function main() {
         if (record.operationKey === OperationKeys.SiteRestore) {
 
           await processSiteRestore(jobId);
+
+          return;
+
+        }
+
+        if (record.operationKey === OperationKeys.SiteClone) {
+
+          await processSiteClone(jobId);
+
+          return;
+
+        }
+
+        if (record.operationKey === OperationKeys.SiteRollback) {
+
+          await processSiteRollback(jobId);
 
           return;
 

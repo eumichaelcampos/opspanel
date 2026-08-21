@@ -21,7 +21,7 @@ export function MetricBar({ label, pct, detail }: MetricBarProps) {
       ) : (
         <div className="text-right text-xs font-medium">{display}</div>
       )}
-      <div className="h-2 overflow-hidden rounded-full bg-white/60">
+      <div className="h-2 overflow-hidden rounded-full bg-ink/10 dark:bg-white/10">
         <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct ?? 0}%` }} />
       </div>
     </div>

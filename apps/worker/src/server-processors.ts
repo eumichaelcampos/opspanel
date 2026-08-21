@@ -10,6 +10,7 @@ import {
   serverUfwConfigureInputSchema,
   serverWordOpsDashboardRecoverInputSchema,
   serverWordOpsInstallInputSchema,
+  serverSecurityScanInputSchema,
 } from "@opspanel/contracts";
 import {
   healthCollectProbe,
@@ -17,8 +18,10 @@ import {
   metricsCollectProbe,
   parseHealthCollectOutput,
   parseMetricsCollectOutput,
+  parseSecurityScanOutput,
   parseWordOpsDashboardCredentials,
   parseWordOpsVersion,
+  securityScanProbe,
   serverRebootProbe,
   serverStackRestartProbe,
   stackActionProbe,
@@ -883,4 +886,77 @@ export async function processServerStackRestart(jobId: string) {
     },
   });
   await appendEvent(jobId, 2, "done", "Stack WordOps reiniciada", 100);
+}
+
+export async function processServerSecurityScan(jobId: string) {
+  const job = await claimJob(jobId);
+  if (!job?.serverId) return;
+
+  const parsed = serverSecurityScanInputSchema.safeParse(job.inputJson);
+  if (!parsed.success) throw new Error("Invalid security scan input");
+
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.running, startedAt: new Date(), currentStep: "security.scan", progress: 10 },
+  });
+  await appendEvent(jobId, 1, "progress", "Verificando conexão SSH…", 8);
+
+  try {
+    await verifySshOrThrow(parsed.data.serverId);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "SSH indisponível";
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.failed,
+        finishedAt: new Date(),
+        errorCode: "SSH_CONNECTION_FAILED",
+        errorMessage: errMsg,
+      },
+    });
+    await appendEvent(jobId, 2, "error", errMsg, 100);
+    return;
+  }
+
+  await appendEvent(jobId, 3, "progress", "Coletando UFW, fail2ban, portas e SSHD…", 25);
+  const result = await execProbeForServer(parsed.data.serverId, securityScanProbe());
+  const full = result.stdout + result.stderr;
+  await appendOutputLogs(jobId, full, 4);
+  const snapshot = parseSecurityScanOutput(full);
+
+  if (result.code !== 0 && !snapshot.collectedAt) {
+    const errMsg = full.slice(0, 500) || "Falha no scan de segurança";
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.failed,
+        finishedAt: new Date(),
+        errorCode: "SECURITY_SCAN_FAILED",
+        errorMessage: errMsg,
+      },
+    });
+    await appendEvent(jobId, 5, "error", errMsg, 100);
+    return;
+  }
+
+  const observedAt = new Date();
+  await prisma.server.update({
+    where: { id: parsed.data.serverId },
+    data: {
+      securitySnapshot: JSON.parse(JSON.stringify(snapshot)) as Prisma.InputJsonValue,
+      securityObservedAt: observedAt,
+      lastConnectedAt: observedAt,
+    },
+  });
+
+  await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      status: JobStatus.succeeded,
+      progress: 100,
+      finishedAt: new Date(),
+      resultJson: snapshot as object,
+    },
+  });
+  await appendEvent(jobId, 6, "done", "Scan de segurança concluído", 100);
 }

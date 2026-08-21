@@ -1,13 +1,15 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Activity, Archive, Cloud, Database, FolderOpen, Globe, Mail, ShieldAlert, Users, Wrench } from "lucide-react";
+import { Activity, Archive, Cloud, Copy, Database, FolderOpen, Globe, LayoutTemplate, Mail, ShieldAlert, Users, Wrench } from "lucide-react";
 
 export type SiteDetailTab =
   | "overview"
   | "files"
   | "database"
   | "ops"
+  | "wordpress"
+  | "staging"
   | "backup"
   | "domain"
   | "cloudflare"
@@ -20,6 +22,8 @@ const TABS: { id: SiteDetailTab; label: string; icon: typeof Activity }[] = [
   { id: "files", label: "Arquivos", icon: FolderOpen },
   { id: "database", label: "Banco", icon: Database },
   { id: "ops", label: "Ajustes", icon: Wrench },
+  { id: "wordpress", label: "WordPress", icon: LayoutTemplate },
+  { id: "staging", label: "Staging", icon: Copy },
   { id: "backup", label: "Backup", icon: Archive },
   { id: "domain", label: "Domínio", icon: Globe },
   { id: "cloudflare", label: "Cloudflare", icon: Cloud },

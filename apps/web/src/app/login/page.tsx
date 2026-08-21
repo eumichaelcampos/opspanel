@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Hexagon } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,17 +31,25 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
+    <div className="relative flex min-h-screen items-center justify-center p-6">
+      <div className="absolute right-5 top-5">
+        <ThemeToggle />
+      </div>
       <form onSubmit={onSubmit} className="glass-panel w-full max-w-md space-y-4 p-8">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-muted">OpsPanel</p>
-          <h1 className="text-2xl font-semibold text-ink">Entrar</h1>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent/15 text-accent">
+            <Hexagon className="h-5 w-5" strokeWidth={2.2} />
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-widest text-muted">OpsPanel</p>
+            <h1 className="text-2xl font-semibold text-ink">Entrar</h1>
+          </div>
         </div>
         {error ? <p className="rounded-card bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
         <label className="block space-y-1 text-sm">
           <span className="text-muted">E-mail</span>
           <input
-            className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+            className="w-full rounded-card border px-3 py-2 focus:outline-none"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
@@ -49,7 +59,7 @@ export default function LoginPage() {
         <label className="block space-y-1 text-sm">
           <span className="text-muted">Senha</span>
           <input
-            className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+            className="w-full rounded-card border px-3 py-2 focus:outline-none"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
@@ -59,7 +69,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+          className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60 dark:shadow-glow-accent"
         >
           {loading ? "Entrando..." : "Entrar"}
         </button>

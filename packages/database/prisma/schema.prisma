@@ -110,6 +110,12 @@ enum EmailProviderKind {
   resend
 }
 
+enum AlertChannelType {
+  slack
+  webhook
+  email
+}
+
 model UserSecret {
   id         String         @id @default(uuid())
   userId     String
@@ -152,6 +158,8 @@ model Organization {
   auditLogs AuditLog[]
   apiKeys ApiKey[]
   emailDomains EmailDomain[]
+  alertChannels AlertChannel[]
+  alertEvents AlertEvent[]
 }
 
 model OrganizationMember {
@@ -192,6 +200,8 @@ model Server {
   healthObservedAt DateTime?
   metricsSnapshot Json?
   metricsObservedAt DateTime?
+  securitySnapshot Json?
+  securityObservedAt DateTime?
   onboardingSnapshot Json?
   onboardingCompletedAt DateTime?
   wordopsDashboard Json?
@@ -209,6 +219,8 @@ model Site {
   isEnabled      Boolean?
   infoSnapshot   Json?
   lastObservedAt DateTime?
+  wpInventorySnapshot Json?
+  wpInventoryObservedAt DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
@@ -447,6 +459,42 @@ model SystemUpdateState {
   applyStartedAt   DateTime?
   applyFinishedAt  DateTime?
   updatedAt        DateTime  @updatedAt
+}
+
+model AlertChannel {
+  id             String           @id @default(uuid())
+  organizationId String
+  name           String
+  type           AlertChannelType
+  webhookUrl     String?
+  emailTo        String?
+  enabled        Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events       AlertEvent[]
+
+  @@index([organizationId])
+}
+
+model AlertEvent {
+  id             String   @id @default(uuid())
+  organizationId String
+  channelId      String?
+  kind           String
+  title          String
+  body           String?
+  payload        Json?
+  status         String
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel      AlertChannel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([channelId])
 }
 
 model SystemSetupState {

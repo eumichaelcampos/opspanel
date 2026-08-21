@@ -120,6 +120,10 @@ export interface SiteInfoSnapshot {
   dbHost?: string;
   collectedAt?: string;
   raw?: string;
+  /** Metadados de clone/staging (OpsPanel). */
+  isStaging?: boolean;
+  stagingOf?: string;
+  clonedFrom?: string;
 }
 
 export interface SiteInventoryItem {

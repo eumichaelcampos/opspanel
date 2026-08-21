@@ -1,18 +1,23 @@
 import { JobStatus, SiteStatus, prisma, type Prisma } from "@opspanel/database";
-import { siteCreateInputSchema, siteFtpUserCreateInputSchema, siteFtpUserDeleteInputSchema, siteBackupInputSchema, siteRestoreInputSchema, siteDeleteInputSchema, siteUpdateDomainInputSchema, siteManageInputSchema, pickPreferredPhpVersion, SITE_MANAGE_ACTION_LABELS, buildSiteManageResultSummary, siteManageStateFromInfo, computeNextBackupRun, backupContentsLabel, DEFAULT_BACKUP_POLICY, type BackupContents } from "@opspanel/contracts";
+import { siteCreateInputSchema, siteFtpUserCreateInputSchema, siteFtpUserDeleteInputSchema, siteBackupInputSchema, siteRestoreInputSchema, siteCloneInputSchema, siteRollbackInputSchema, siteDeleteInputSchema, siteUpdateDomainInputSchema, siteManageInputSchema, pickPreferredPhpVersion, SITE_MANAGE_ACTION_LABELS, buildSiteManageResultSummary, siteManageStateFromInfo, computeNextBackupRun, backupContentsLabel, DEFAULT_BACKUP_POLICY, type BackupContents } from "@opspanel/contracts";
 import {
   ftpUserCreateProbe,
   ftpUserDeleteProbe,
   proftpdEnsureProbe,
   parseProftpdEnsureOutput,
   parseSiteBackupOutput,
+  parseSiteBackupListOutput,
   parseSiteRestoreOutput,
+  parseSiteCloneOutput,
   parseSiteCreateOutput,
   parseSiteInfoOutput,
   estimateSiteCreateProgress,
+  estimateSiteCloneProgress,
   siteBackupProbe,
   siteBackupPruneProbe,
+  siteBackupListProbe,
   siteRestoreProbe,
+  siteCloneProbe,
   siteCreateProbe,
   siteDeleteProbe,
   siteInfoProbe,
@@ -20,6 +25,7 @@ import {
   siteUpdateDomainProbe,
   type SiteDbCredentials,
   type SiteBackupContents,
+  type SiteCloneType,
 } from "@opspanel/wordops";
 import { encryptJson } from "@opspanel/security";
 import { loadEnv } from "@opspanel/config";
@@ -669,7 +675,19 @@ export async function processSiteRestore(jobId: string) {
     if (!restorePath) throw new Error("Backup não informado.");
 
     await appendEvent(jobId, 4, "progress", `Restaurando de ${restorePath}`, 45);
-    const result = await execProbeForServer(site.serverId, siteRestoreProbe(site.domain, restorePath), 900_000);
+    const restoreMode = parsed.data.mode ?? "full";
+    await appendEvent(
+      jobId,
+      5,
+      "progress",
+      `Modo de restauração: ${restoreMode}`,
+      50,
+    );
+    const result = await execProbeForServer(
+      site.serverId,
+      siteRestoreProbe(site.domain, restorePath, restoreMode),
+      900_000,
+    );
     const combined = `${result.stdout}\n${result.stderr}`;
     const restored = parseSiteRestoreOutput(combined);
     if (!restored.ok) {
@@ -678,9 +696,15 @@ export async function processSiteRestore(jobId: string) {
 
     await refreshSiteFromInfo(site.id, site.domain, site.serverId).catch(() => undefined);
 
-    const summary = restored.databaseRestored
-      ? `Site restaurado (arquivos + banco) a partir de ${restorePath}.`
-      : `Site restaurado a partir de ${restorePath}.`;
+    const modeLabel =
+      restoreMode === "db"
+        ? "somente banco"
+        : restoreMode === "files"
+          ? "somente arquivos"
+          : restoreMode === "wp-content"
+            ? "somente wp-content"
+            : "completo";
+    const summary = `Site restaurado (${modeLabel}) a partir de ${restorePath}.`;
 
     await prisma.job.update({
       where: { id: jobId },
@@ -690,6 +714,7 @@ export async function processSiteRestore(jobId: string) {
         finishedAt: new Date(),
         resultJson: {
           ...restored,
+          mode: restoreMode,
           actionLabel: "Restaurar backup",
           summary,
           backupPath: restorePath,
@@ -710,6 +735,292 @@ export async function processSiteRestore(jobId: string) {
       },
     });
     await appendEvent(jobId, 3, "error", errMsg, 100);
+  }
+}
+
+function resolveCloneSiteType(site: {
+  siteType?: string | null;
+  infoSnapshot?: unknown;
+}): SiteCloneType {
+  const raw = (site.siteType ?? "").toLowerCase();
+  const allowed: SiteCloneType[] = [
+    "html",
+    "php",
+    "mysql",
+    "wp",
+    "wpfc",
+    "wpredis",
+    "wpsc",
+    "wprocket",
+    "wpce",
+  ];
+  if (allowed.includes(raw as SiteCloneType)) return raw as SiteCloneType;
+  const info = site.infoSnapshot as { isWordPress?: boolean; siteType?: string } | null;
+  if (info?.siteType && allowed.includes(info.siteType.toLowerCase() as SiteCloneType)) {
+    return info.siteType.toLowerCase() as SiteCloneType;
+  }
+  if (info?.isWordPress || /^wp/i.test(raw)) return "wp";
+  return "html";
+}
+
+async function execSiteCloneStreaming(
+  serverId: string,
+  jobId: string,
+  probe: readonly string[],
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  const target = await loadSshTargetForServer(serverId);
+  const session = await connectSshSession(target);
+  let logSeq = 10;
+  let lastProgress = 10;
+  const pendingLogs: Promise<void>[] = [];
+  try {
+    return await session.execProbeStreaming(
+      probe,
+      {
+        onLine: (line) => {
+          logSeq += 1;
+          const seq = logSeq;
+          const est = estimateSiteCloneProgress(line);
+          if (est > lastProgress) lastProgress = est;
+          pendingLogs.push(
+            appendEvent(jobId, seq, "log", line.slice(0, 2000), lastProgress).then(() => {
+              void prisma.job.update({ where: { id: jobId }, data: { progress: lastProgress } });
+            }),
+          );
+        },
+      },
+      1_200_000,
+    );
+  } finally {
+    session.close();
+    await Promise.all(pendingLogs);
+  }
+}
+
+export async function processSiteClone(jobId: string) {
+  const job = await claimJob(jobId);
+  if (!job) return;
+
+  const parsed = siteCloneInputSchema.safeParse(job.inputJson);
+  if (!parsed.success) throw new Error("Invalid site clone input");
+
+  const source = await loadSite(parsed.data.siteId);
+  if (!source) throw new Error("Site not found");
+
+  const targetDomain = parsed.data.targetDomain.toLowerCase();
+  const asStaging = parsed.data.asStaging ?? true;
+  const siteType = resolveCloneSiteType(source);
+
+  if (siteType === ("proxy" as string) || siteType === ("alias" as string)) {
+    throw new Error("Clone de proxy/alias não é suportado");
+  }
+
+  const phpRaw = (source.phpVersion ?? "default").replace(/^php/, "");
+  const phpVersion = (
+    ["74", "80", "81", "82", "83", "84"].includes(phpRaw) ? phpRaw : "default"
+  ) as "default" | "74" | "80" | "81" | "82" | "83" | "84";
+
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.running, startedAt: new Date(), currentStep: "site.clone", progress: 5 },
+  });
+  await appendEvent(
+    jobId,
+    1,
+    "progress",
+    `Clonando ${source.domain} → ${targetDomain} (${siteType}${asStaging ? ", staging" : ""})`,
+    5,
+  );
+
+  const probe = siteCloneProbe({
+    sourceDomain: source.domain,
+    targetDomain,
+    siteType,
+    phpVersion,
+    asStaging,
+  });
+
+  try {
+    const result = await execSiteCloneStreaming(source.serverId, jobId, probe);
+    const fullOutput = `${result.stdout}\n${result.stderr}`;
+    await appendOutputLogs(jobId, fullOutput, 500);
+    const cloned = parseSiteCloneOutput(fullOutput);
+    if (!cloned.ok) {
+      throw new Error(cloned.error ?? `Falha ao clonar site (exit=${result.code})`);
+    }
+
+    await appendEvent(jobId, 890, "progress", "Registrando site clonado no inventário", 92);
+
+    const newSite = await prisma.site.upsert({
+      where: {
+        organizationId_domain: {
+          organizationId: job.organizationId,
+          domain: targetDomain,
+        },
+      },
+      create: {
+        organizationId: job.organizationId,
+        serverId: source.serverId,
+        domain: targetDomain,
+        siteType,
+        phpVersion: source.phpVersion,
+        status: SiteStatus.provisioning,
+        infoSnapshot: {
+          isStaging: asStaging || targetDomain.startsWith("staging."),
+          stagingOf: source.domain,
+          clonedFrom: source.domain,
+        },
+      },
+      update: {
+        serverId: source.serverId,
+        siteType,
+        phpVersion: source.phpVersion,
+        status: SiteStatus.provisioning,
+        deletedAt: null,
+        infoSnapshot: {
+          isStaging: asStaging || targetDomain.startsWith("staging."),
+          stagingOf: source.domain,
+          clonedFrom: source.domain,
+        },
+      },
+    });
+
+    let info = await refreshSiteFromInfo(newSite.id, targetDomain, source.serverId).catch(() => null);
+    if (info) {
+      await prisma.site.update({
+        where: { id: newSite.id },
+        data: {
+          infoSnapshot: {
+            ...info,
+            isStaging: asStaging || targetDomain.startsWith("staging."),
+            stagingOf: source.domain,
+            clonedFrom: source.domain,
+          } as object,
+        },
+      });
+    }
+
+    const summary = `Site clonado para ${targetDomain}.`;
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.succeeded,
+        progress: 100,
+        finishedAt: new Date(),
+        resultJson: {
+          ...cloned,
+          actionLabel: "Clonar site (staging)",
+          summary,
+          sourceSiteId: source.id,
+          targetSiteId: newSite.id,
+          targetDomain,
+          asStaging,
+          verified: true,
+        },
+      },
+    });
+    await appendEvent(jobId, 900, "done", summary, 100);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "Clone falhou";
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.failed,
+        finishedAt: new Date(),
+        errorCode: "SITE_CLONE_FAILED",
+        errorMessage: errMsg,
+      },
+    });
+    await appendEvent(jobId, 900, "error", errMsg, 100);
+  }
+}
+
+/** Rollback: restore full do backup escolhido (ou o mais recente listado no servidor). */
+export async function processSiteRollback(jobId: string) {
+  const job = await claimJob(jobId);
+  if (!job) return;
+
+  const parsed = siteRollbackInputSchema.safeParse(job.inputJson);
+  if (!parsed.success) throw new Error("Invalid site rollback input");
+
+  const site = await loadSite(parsed.data.siteId);
+  if (!site) throw new Error("Site not found");
+
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.running, startedAt: new Date(), currentStep: "site.rollback", progress: 5 },
+  });
+  await appendEvent(jobId, 1, "progress", `Preparando rollback de ${site.domain}`, 5);
+
+  try {
+    let restorePath = parsed.data.backupPath;
+    if (!restorePath) {
+      await appendEvent(jobId, 2, "progress", "Localizando backup mais recente", 12);
+      const listed = await execProbeForServer(site.serverId, siteBackupListProbe(site.domain), 60_000);
+      const entries = parseSiteBackupListOutput(`${listed.stdout}\n${listed.stderr}`);
+      const best =
+        entries.find((e) => e.path && e.integrity !== "warning" && (e.hasFiles || e.hasDatabase)) ??
+        entries.find((e) => e.path);
+      if (!best?.path) throw new Error("Nenhum backup local encontrado para rollback.");
+      restorePath = best.path;
+    }
+
+    const expectedPrefix = `/var/backups/opspanel/${site.domain.toLowerCase()}/`;
+    if (!restorePath.startsWith(expectedPrefix)) {
+      throw new Error("Backup path does not belong to this site");
+    }
+
+    await appendEvent(jobId, 3, "progress", "Criando backup de segurança antes do rollback", 18);
+    await executeSiteBackup(jobId, site, "Backup de segurança (pré-rollback)", {
+      contents: "files_and_database",
+      skipDrive: true,
+      skipPrune: true,
+    });
+
+    await appendEvent(jobId, 4, "progress", `Restaurando (full) de ${restorePath}`, 45);
+    const result = await execProbeForServer(
+      site.serverId,
+      siteRestoreProbe(site.domain, restorePath, "full"),
+      900_000,
+    );
+    const combined = `${result.stdout}\n${result.stderr}`;
+    const restored = parseSiteRestoreOutput(combined);
+    if (!restored.ok) {
+      throw new Error(restored.error ?? `Falha no rollback (exit=${result.code})`);
+    }
+
+    await refreshSiteFromInfo(site.id, site.domain, site.serverId).catch(() => undefined);
+
+    const summary = `Rollback concluído a partir de ${restorePath}.`;
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.succeeded,
+        progress: 100,
+        finishedAt: new Date(),
+        resultJson: {
+          ...restored,
+          mode: "full",
+          actionLabel: "Rollback do site",
+          summary,
+          backupPath: restorePath,
+          verified: true,
+        },
+      },
+    });
+    await appendEvent(jobId, 900, "done", summary, 100);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "Rollback falhou";
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.failed,
+        finishedAt: new Date(),
+        errorCode: "SITE_ROLLBACK_FAILED",
+        errorMessage: errMsg,
+      },
+    });
+    await appendEvent(jobId, 900, "error", errMsg, 100);
   }
 }
 

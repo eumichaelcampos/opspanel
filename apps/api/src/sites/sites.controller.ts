@@ -213,6 +213,26 @@ export class SitesController {
     return this.sites.restore(user, siteId, body, req.ip);
   }
 
+  @Post(":siteId/clone")
+  clone(
+    @CurrentUser() user: SessionUser,
+    @Param("siteId") siteId: string,
+    @Body() body: unknown,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.sites.clone(user, siteId, body, req.ip);
+  }
+
+  @Post(":siteId/rollback")
+  rollback(
+    @CurrentUser() user: SessionUser,
+    @Param("siteId") siteId: string,
+    @Body() body: unknown,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.sites.rollback(user, siteId, body, req.ip);
+  }
+
   @Post(":siteId/delete")
   deleteSite(
     @CurrentUser() user: SessionUser,

@@ -9,8 +9,16 @@ export * from "./wordops-server-catalog.js";
 export * from "./wordops-server-onboarding.js";
 export * from "./wordops-dashboard-catalog.js";
 export * from "./backup-policy.js";
+export * from "./backup-center.js";
+export * from "./dns-doctor.js";
 export * from "./email.js";
 export * from "./job-labels.js";
+export * from "./security-center.js";
+export * from "./wordpress-center.js";
+export * from "./staging-center.js";
+export * from "./performance-center.js";
+export * from "./playbooks.js";
+export * from "./alerts.js";
 
 export const OperationKeys = {
   ServerConnectionTest: "server.connection.test",
@@ -24,6 +32,8 @@ export const OperationKeys = {
   ServerWordOpsDashboardRecover: "server.wordops.dashboard.recover",
   ServerStackMigrate: "server.stack.migrate",
   ServerUfwConfigure: "server.ufw.configure",
+  ServerSecurityScan: "server.security.scan",
+  ServerPlaybookRun: "server.playbook.run",
   ServerDelete: "server.delete",
   ServerReboot: "server.reboot",
   ServerStackRestart: "server.stack.restart",
@@ -32,6 +42,8 @@ export const OperationKeys = {
   SiteManage: "site.manage",
   SiteBackup: "site.backup",
   SiteRestore: "site.restore",
+  SiteRollback: "site.rollback",
+  SiteClone: "site.clone",
   SiteDelete: "site.delete",
   SiteUpdateDomain: "site.update.domain",
   SiteFtpUserCreate: "site.ftp.user.create",
@@ -42,6 +54,8 @@ export const OperationKeys = {
   SiteEmailMailboxCreate: "site.email.mailbox.create",
   SiteEmailMailboxDelete: "site.email.mailbox.delete",
   SiteEmailHealthCheck: "site.email.health.check",
+  SiteWpInventory: "site.wp.inventory",
+  SiteWpUpdate: "site.wp.update",
 } as const;
 
 export type OperationKey = (typeof OperationKeys)[keyof typeof OperationKeys];
@@ -154,6 +168,12 @@ export const serverUfwConfigureInputSchema = z.object({
   ports: z.array(z.number().int().min(1).max(65535)).optional(),
 });
 
+export const serverSecurityScanInputSchema = z.object({
+  serverId: z.string().uuid(),
+});
+
+export type ServerSecurityScanInput = z.infer<typeof serverSecurityScanInputSchema>;
+
 export const onboardingStepPatchSchema = z.object({
   completedSteps: z.array(z.string()).optional(),
   skippedSteps: z.array(z.string()).optional(),
@@ -230,9 +250,61 @@ export const siteCreateInputSchema = z
 
 export type SiteCreateInput = z.infer<typeof siteCreateInputSchema>;
 
+/** Clone site → staging subdomain ou novo domínio no mesmo servidor. */
+export const siteCloneInputSchema = z
+  .object({
+    siteId: z.string().uuid(),
+    targetDomain: z.string().min(3).max(253).regex(domainRegex, "Domínio inválido"),
+    asStaging: z.boolean().optional().default(true),
+  })
+  .superRefine((data, ctx) => {
+    // Validação de igualdade source/target ocorre na API (precisa do domínio atual).
+    if (!data.targetDomain.trim()) {
+      ctx.addIssue({ code: "custom", message: "Informe o domínio de destino", path: ["targetDomain"] });
+    }
+  });
+
+export type SiteCloneInput = z.infer<typeof siteCloneInputSchema>;
+
+/**
+ * Rollback: atalho sobre SiteRestore (modo full) usando o backup mais recente,
+ * ou um caminho explícito. O worker resolve o backup se backupPath for omitido.
+ */
+export const siteRollbackInputSchema = z.object({
+  siteId: z.string().uuid(),
+  backupPath: z
+    .string()
+    .min(10)
+    .max(512)
+    .regex(/^\/var\/backups\/opspanel\/[a-z0-9.-]+\/[^/]+$/i, "Caminho de backup inválido")
+    .optional(),
+});
+
+export type SiteRollbackInput = z.infer<typeof siteRollbackInputSchema>;
+
 export const siteInfoInputSchema = z.object({
   siteId: z.string().uuid(),
 });
+
+export const siteWpInventoryInputSchema = z.object({
+  siteId: z.string().uuid(),
+});
+
+export type SiteWpInventoryInput = z.infer<typeof siteWpInventoryInputSchema>;
+
+const wpUpdateTargetSchema = z.union([
+  z.literal("core"),
+  z.literal("plugins"),
+  z.literal("themes"),
+  z.string().min(1).max(128),
+]);
+
+export const siteWpUpdateInputSchema = z.object({
+  siteId: z.string().uuid(),
+  targets: z.array(wpUpdateTargetSchema).min(1),
+});
+
+export type SiteWpUpdateInput = z.infer<typeof siteWpUpdateInputSchema>;
 
 export const siteManageActionSchema = z.enum([
   "enable",

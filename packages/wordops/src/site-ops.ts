@@ -675,6 +675,9 @@ const RESTORE_ERROR_LABELS: Record<string, string> = {
   backup_empty: "Este backup não tem arquivos nem banco.",
   site_root_missing: "A pasta do site não foi encontrada no servidor.",
   wordpress_required_for_db: "Não foi possível importar o banco. WordPress não foi detectado.",
+  mode_requires_database: "Este modo precisa de database.sql.gz no backup.",
+  mode_requires_files: "Este modo precisa de files.tar.gz no backup.",
+  wp_content_not_found: "Não foi possível localizar wp-content no arquivo de backup.",
 };
 
 function humanizeRestoreError(raw: string): string {
@@ -830,12 +833,15 @@ export function siteBackupProbe(
   return ["bash", "-lc", buildSiteBackupScript(domain, db, contents)];
 }
 
+export type SiteBackupIntegrity = "ok" | "warning" | "unknown";
+
 export interface SiteBackupListEntry {
   path: string;
   timestamp: string;
   hasDatabase: boolean;
   hasFiles: boolean;
   filesSizeBytes: number;
+  integrity: SiteBackupIntegrity;
 }
 
 export function parseSiteBackupListOutput(output: string): SiteBackupListEntry[] {
@@ -845,14 +851,19 @@ export function parseSiteBackupListOutput(output: string): SiteBackupListEntry[]
     if (!m) continue;
     const parts = m[1]!.split("|");
     if (parts.length < 4) continue;
-    const [timestamp, path, hasDb, sizeRaw, hasFilesRaw] = parts;
+    const [timestamp, path, hasDb, sizeRaw, hasFilesRaw, integrityRaw] = parts;
     if (!timestamp || !path) continue;
+    const integrity: SiteBackupIntegrity =
+      integrityRaw === "ok" || integrityRaw === "warning" || integrityRaw === "unknown"
+        ? integrityRaw
+        : "unknown";
     entries.push({
       timestamp,
       path,
       hasDatabase: hasDb === "1",
       hasFiles: hasFilesRaw == null ? true : hasFilesRaw === "1",
       filesSizeBytes: parseInt(sizeRaw ?? "0", 10) || 0,
+      integrity,
     });
   }
   return entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -866,12 +877,22 @@ export function buildSiteBackupListScript(domain: string): string {
     `if [ ! -d "$BACKUP_ROOT" ]; then echo "OPS_BACKUP_LIST_OK=1"; exit 0; fi`,
     `find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -r | while IFS= read -r dir; do`,
     `  TS=$(basename "$dir")`,
-    `  HAS_DB=0; HAS_FILES=0; SIZE=0`,
+    `  HAS_DB=0; HAS_FILES=0; SIZE=0; INTEGRITY=unknown`,
     `  [ -f "$dir/database.sql.gz" ] && HAS_DB=1`,
     `  if [ -f "$dir/files.tar.gz" ]; then HAS_FILES=1; SIZE=$(stat -c%s "$dir/files.tar.gz" 2>/dev/null || echo 0); fi`,
     `  if [ "$HAS_DB" = "0" ] && [ "$HAS_FILES" = "0" ]; then continue; fi`,
     `  if [ "$SIZE" = "0" ] && [ -f "$dir/database.sql.gz" ]; then SIZE=$(stat -c%s "$dir/database.sql.gz" 2>/dev/null || echo 0); fi`,
-    `  echo "OPS_BACKUP_ENTRY=$TS|$dir|$HAS_DB|$SIZE|$HAS_FILES"`,
+    `  BAD=0`,
+    `  if [ "$HAS_FILES" = "1" ]; then`,
+    `    if gzip -t "$dir/files.tar.gz" 2>/dev/null; then :; else BAD=1; fi`,
+    `  fi`,
+    `  if [ "$HAS_DB" = "1" ]; then`,
+    `    if gzip -t "$dir/database.sql.gz" 2>/dev/null; then :; else BAD=1; fi`,
+    `  fi`,
+    `  if [ "$HAS_FILES" = "1" ] || [ "$HAS_DB" = "1" ]; then`,
+    `    if [ "$BAD" = "1" ]; then INTEGRITY=warning; else INTEGRITY=ok; fi`,
+    `  fi`,
+    `  echo "OPS_BACKUP_ENTRY=$TS|$dir|$HAS_DB|$SIZE|$HAS_FILES|$INTEGRITY"`,
     `done`,
     `echo "OPS_BACKUP_LIST_OK=1"`,
   ].join("\n");
@@ -946,7 +967,13 @@ export function parseSiteRestoreOutput(output: string): ParsedSiteRestoreOutput 
   };
 }
 
-export function buildSiteRestoreScript(domain: string, backupPath: string): string {
+export type SiteRestoreMode = "full" | "db" | "files" | "wp-content";
+
+export function buildSiteRestoreScript(
+  domain: string,
+  backupPath: string,
+  mode: SiteRestoreMode = "full",
+): string {
   const d = domain.toLowerCase();
   if (!validateDomain(d)) throw new Error("Domínio inválido");
   const bp = backupPath.replace(/\/+$/, "");
@@ -954,8 +981,13 @@ export function buildSiteRestoreScript(domain: string, backupPath: string): stri
   if (!bp.startsWith(expectedPrefix) || bp.includes("..") || bp === expectedPrefix.slice(0, -1)) {
     throw new Error("Caminho de backup inválido");
   }
+  const restoreMode: SiteRestoreMode =
+    mode === "db" || mode === "files" || mode === "wp-content" ? mode : "full";
 
   const wpPaths = buildWordPressPathDetectionScript();
+  const wantDb = restoreMode === "full" || restoreMode === "db";
+  const wantFiles = restoreMode === "full" || restoreMode === "files";
+  const wantWpContent = restoreMode === "wp-content";
 
   return [
     WO_PATH,
@@ -963,6 +995,7 @@ export function buildSiteRestoreScript(domain: string, backupPath: string): stri
     `set -o pipefail`,
     `DOMAIN=${shellQuote(d)}`,
     `BACKUP_DIR=${shellQuote(bp)}`,
+    `RESTORE_MODE=${shellQuote(restoreMode)}`,
     `SITE_ROOT="/var/www/${d}"`,
     `BACKUP_ROOT="/var/backups/opspanel/${d}"`,
     `REL="\${BACKUP_DIR#"$BACKUP_ROOT"/}"`,
@@ -974,25 +1007,64 @@ export function buildSiteRestoreScript(domain: string, backupPath: string): stri
     `if [ "$HAS_FILES" = "0" ] && [ "$HAS_DB" = "0" ]; then echo "OPS_RESTORE_ERROR=backup_empty"; exit 1; fi`,
     `test -d "$SITE_ROOT" || { echo "OPS_RESTORE_ERROR=site_root_missing"; exit 1; }`,
     wpPaths,
-    `if [ "$HAS_FILES" = "1" ]; then`,
-    `  echo "OPS_RESTORE_STEP=extracting_files"`,
-    `  tar -xzf "$BACKUP_DIR/files.tar.gz" -C "$SITE_ROOT"`,
-    `  echo "OPS_RESTORE_FILES=1"`,
-    `fi`,
-    `if [ "$HAS_DB" = "1" ]; then`,
-    `  if [ -z "$WP_ROOT" ]; then echo "OPS_RESTORE_ERROR=wordpress_required_for_db"; exit 1; fi`,
-    `  echo "OPS_RESTORE_STEP=importing_database"`,
-    `  gunzip -c "$BACKUP_DIR/database.sql.gz" | wp db import - --path="$WP_ROOT" --allow-root`,
-    `  echo "OPS_RESTORE_DB=1"`,
-    `fi`,
+    wantFiles
+      ? [
+          `if [ "$HAS_FILES" = "1" ]; then`,
+          `  echo "OPS_RESTORE_STEP=extracting_files"`,
+          `  tar -xzf "$BACKUP_DIR/files.tar.gz" -C "$SITE_ROOT"`,
+          `  echo "OPS_RESTORE_FILES=1"`,
+          `elif [ "$RESTORE_MODE" = "files" ]; then`,
+          `  echo "OPS_RESTORE_ERROR=mode_requires_files"; exit 1`,
+          `fi`,
+        ].join("\n")
+      : `true`,
+    wantWpContent
+      ? [
+          `if [ "$HAS_FILES" != "1" ]; then echo "OPS_RESTORE_ERROR=mode_requires_files"; exit 1; fi`,
+          `echo "OPS_RESTORE_STEP=extracting_wp_content"`,
+          `TMP_RESTORE=$(mktemp -d /tmp/ops-restore-XXXXXX)`,
+          `tar -xzf "$BACKUP_DIR/files.tar.gz" -C "$TMP_RESTORE"`,
+          `SRC_WC=""`,
+          `if [ -d "$TMP_RESTORE/htdocs/wp-content" ]; then SRC_WC="$TMP_RESTORE/htdocs/wp-content"; fi`,
+          `if [ -z "$SRC_WC" ] && [ -d "$TMP_RESTORE/wp-content" ]; then SRC_WC="$TMP_RESTORE/wp-content"; fi`,
+          `if [ -z "$SRC_WC" ]; then SRC_WC=$(find "$TMP_RESTORE" -type d -name wp-content 2>/dev/null | head -1); fi`,
+          `if [ -z "$SRC_WC" ] || [ ! -d "$SRC_WC" ]; then rm -rf "$TMP_RESTORE"; echo "OPS_RESTORE_ERROR=wp_content_not_found"; exit 1; fi`,
+          `DEST_WC=""`,
+          `if [ -n "$WP_ROOT" ] && [ -d "$WP_ROOT/wp-content" ]; then DEST_WC="$WP_ROOT/wp-content"; fi`,
+          `if [ -z "$DEST_WC" ] && [ -d "$SITE_ROOT/htdocs/wp-content" ]; then DEST_WC="$SITE_ROOT/htdocs/wp-content"; fi`,
+          `if [ -z "$DEST_WC" ]; then DEST_WC="$SITE_ROOT/htdocs/wp-content"; mkdir -p "$DEST_WC"; fi`,
+          `rm -rf "$DEST_WC"`,
+          `mkdir -p "$(dirname "$DEST_WC")"`,
+          `cp -a "$SRC_WC" "$DEST_WC"`,
+          `rm -rf "$TMP_RESTORE"`,
+          `echo "OPS_RESTORE_FILES=1"`,
+        ].join("\n")
+      : `true`,
+    wantDb
+      ? [
+          `if [ "$HAS_DB" = "1" ]; then`,
+          `  if [ -z "$WP_ROOT" ]; then echo "OPS_RESTORE_ERROR=wordpress_required_for_db"; exit 1; fi`,
+          `  echo "OPS_RESTORE_STEP=importing_database"`,
+          `  gunzip -c "$BACKUP_DIR/database.sql.gz" | wp db import - --path="$WP_ROOT" --allow-root`,
+          `  echo "OPS_RESTORE_DB=1"`,
+          `elif [ "$RESTORE_MODE" = "db" ]; then`,
+          `  echo "OPS_RESTORE_ERROR=mode_requires_database"; exit 1`,
+          `fi`,
+        ].join("\n")
+      : `true`,
     `[ -n "$WP_ROOT" ] && chown -R www-data:www-data "$WP_ROOT" 2>/dev/null || true`,
     `echo "OPS_RESTORE_OK=1"`,
     `echo "OPS_RESTORE_PATH=$BACKUP_DIR"`,
+    `echo "OPS_RESTORE_MODE=$RESTORE_MODE"`,
   ].join("\n");
 }
 
-export function siteRestoreProbe(domain: string, backupPath: string): readonly string[] {
-  return ["bash", "-lc", buildSiteRestoreScript(domain, backupPath)];
+export function siteRestoreProbe(
+  domain: string,
+  backupPath: string,
+  mode: SiteRestoreMode = "full",
+): readonly string[] {
+  return ["bash", "-lc", buildSiteRestoreScript(domain, backupPath, mode)];
 }
 
 export function siteDeleteProbe(domain: string): readonly string[] {
@@ -1001,6 +1073,181 @@ export function siteDeleteProbe(domain: string): readonly string[] {
 
 export function siteUpdateDomainProbe(oldDomain: string, newDomain: string): readonly string[] {
   return ["bash", "-lc", buildSiteUpdateDomainScript(oldDomain, newDomain)];
+}
+
+export type SiteCloneType = Exclude<SiteCreateType, "proxy" | "alias">;
+
+export interface SiteCloneParams {
+  sourceDomain: string;
+  targetDomain: string;
+  siteType: SiteCloneType;
+  phpVersion?: "default" | "74" | "80" | "81" | "82" | "83" | "84";
+  /** Se true, cria sem SSL (DNS de staging costuma não estar pronto). */
+  asStaging?: boolean;
+}
+
+export interface ParsedSiteCloneOutput {
+  ok: boolean;
+  targetDomain?: string;
+  sourceDomain?: string;
+  isWordPress?: boolean;
+  error?: string;
+}
+
+/**
+ * Clone MVP: wo site create no destino + rsync de arquivos + dump/import DB com search-replace (WP).
+ * Limitações: sem SSL automático no destino; proxy/alias não suportados; multisite/search-replace best-effort;
+ * não copia crons externos nem configs Redis além do que está nos arquivos.
+ */
+export function buildSiteCloneScript(input: SiteCloneParams): string {
+  const src = input.sourceDomain.toLowerCase();
+  const dst = input.targetDomain.toLowerCase();
+  if (!validateDomain(src) || !validateDomain(dst)) throw new Error("Domínio inválido");
+  if (src === dst) throw new Error("Domínios de origem e destino iguais");
+
+  const siteType = input.siteType;
+  const typeFlag = TYPE_FLAGS[siteType] ?? "--html";
+  const php =
+    input.phpVersion && input.phpVersion !== "default" ? PHP_FLAGS[input.phpVersion] : null;
+  const createFlags = [typeFlag, php].filter(Boolean).join(" ");
+  const createCmd = woCmd(`site create ${shellQuote(dst)} ${createFlags}`);
+
+  const isWp = /^wp/i.test(siteType);
+
+  const rsyncExcludes = [
+    "--exclude=htdocs/wp-content/cache",
+    "--exclude=htdocs/wp-content/wflogs",
+    "--exclude=htdocs/wp-content/uploads/wc-logs",
+    "--exclude=htdocs/wp-content/ai1wm-backups",
+    "--exclude=*.log",
+  ].join(" ");
+
+  const wpClone = isWp
+    ? [
+        `SRC_ROOT="/var/www/$SRC"`,
+        `DST_ROOT="/var/www/$DST"`,
+        `SRC_WP=""; DST_WP=""`,
+        `if [ -f "$SRC_ROOT/htdocs/wp-load.php" ]; then SRC_WP="$SRC_ROOT/htdocs"; elif [ -f "$SRC_ROOT/wp-load.php" ]; then SRC_WP="$SRC_ROOT"; fi`,
+        `if [ -f "$DST_ROOT/htdocs/wp-load.php" ]; then DST_WP="$DST_ROOT/htdocs"; elif [ -f "$DST_ROOT/wp-load.php" ]; then DST_WP="$DST_ROOT"; fi`,
+        `test -n "$SRC_WP" || { echo "OPS_CLONE_ERROR=source_not_wordpress"; exit 1; }`,
+        `test -n "$DST_WP" || { echo "OPS_CLONE_ERROR=target_not_wordpress"; exit 1; }`,
+        `echo "OPS_CLONE_STEP=preserving_target_wpconfig"`,
+        `CFG_BAK=$(mktemp /tmp/ops-clone-wpconfig-XXXXXX)`,
+        `cp -a "$DST_WP/wp-config.php" "$CFG_BAK"`,
+        `echo "OPS_CLONE_STEP=rsync_files"`,
+        `rsync -a --delete ${rsyncExcludes} --exclude=wp-config.php "$SRC_WP/" "$DST_WP/" || { echo "OPS_CLONE_ERROR=rsync_failed"; exit 1; }`,
+        `cp -a "$CFG_BAK" "$DST_WP/wp-config.php"`,
+        `rm -f "$CFG_BAK"`,
+        `echo "OPS_CLONE_STEP=export_source_db"`,
+        `DUMP=$(mktemp /tmp/ops-clone-db-XXXXXX.sql)`,
+        `wp db export "$DUMP" --path="$SRC_WP" --allow-root --single-transaction >/dev/null 2>&1 || { echo "OPS_CLONE_ERROR=db_export_failed"; rm -f "$DUMP"; exit 1; }`,
+        `test -s "$DUMP" || { echo "OPS_CLONE_ERROR=db_export_empty"; rm -f "$DUMP"; exit 1; }`,
+        `echo "OPS_CLONE_STEP=import_target_db"`,
+        `wp db import "$DUMP" --path="$DST_WP" --allow-root || { echo "OPS_CLONE_ERROR=db_import_failed"; rm -f "$DUMP"; exit 1; }`,
+        `rm -f "$DUMP"`,
+        `echo "OPS_CLONE_STEP=search_replace"`,
+        `wp search-replace "https://$SRC" "https://$DST" --path="$DST_WP" --all-tables --allow-root 2>/dev/null || true`,
+        `wp search-replace "http://$SRC" "http://$DST" --path="$DST_WP" --all-tables --allow-root 2>/dev/null || true`,
+        `wp search-replace "https://www.$SRC" "https://$DST" --path="$DST_WP" --all-tables --allow-root 2>/dev/null || true`,
+        `wp search-replace "http://www.$SRC" "http://$DST" --path="$DST_WP" --all-tables --allow-root 2>/dev/null || true`,
+        `wp search-replace "$SRC" "$DST" --path="$DST_WP" --all-tables --allow-root 2>/dev/null || true`,
+        `wp option update blog_public 0 --path="$DST_WP" --allow-root 2>/dev/null || true`,
+        `chown -R www-data:www-data "$DST_WP" 2>/dev/null || true`,
+        `echo "OPS_CLONE_WP=1"`,
+      ].join("\n")
+    : [
+        `SRC_ROOT="/var/www/$SRC"`,
+        `DST_ROOT="/var/www/$DST"`,
+        `echo "OPS_CLONE_STEP=rsync_files"`,
+        `if [ -d "$SRC_ROOT/htdocs" ] && [ -d "$DST_ROOT/htdocs" ]; then`,
+        `  rsync -a --delete ${rsyncExcludes} "$SRC_ROOT/htdocs/" "$DST_ROOT/htdocs/" || { echo "OPS_CLONE_ERROR=rsync_failed"; exit 1; }`,
+        `  chown -R www-data:www-data "$DST_ROOT/htdocs" 2>/dev/null || true`,
+        `else`,
+        `  rsync -a --delete ${rsyncExcludes} --exclude=conf --exclude=logs "$SRC_ROOT/" "$DST_ROOT/" || { echo "OPS_CLONE_ERROR=rsync_failed"; exit 1; }`,
+        `  chown -R www-data:www-data "$DST_ROOT" 2>/dev/null || true`,
+        `fi`,
+        `echo "OPS_CLONE_WP=0"`,
+      ].join("\n");
+
+  return [
+    WO_PATH,
+    `set -e`,
+    `set -o pipefail`,
+    `SRC=${shellQuote(src)}`,
+    `DST=${shellQuote(dst)}`,
+    `test -d "/var/www/$SRC" || { echo "OPS_CLONE_ERROR=source_missing"; exit 1; }`,
+    `test ! -d "/var/www/$DST" || { echo "OPS_CLONE_ERROR=target_exists"; exit 1; }`,
+    `echo "OPS_CLONE_STEP=create_target"`,
+    `${createCmd} || { echo "OPS_CLONE_ERROR=site_create_failed"; exit 1; }`,
+    `test -d "/var/www/$DST" || { echo "OPS_CLONE_ERROR=target_missing_after_create"; exit 1; }`,
+    wpClone,
+    `nginx -t >/dev/null 2>&1 && (${woCmd("stack reload --nginx")} 2>/dev/null || systemctl reload nginx 2>/dev/null || true) || true`,
+    `echo "OPS_CLONE_OK=1"`,
+    `echo "OPS_CLONE_SOURCE=$SRC"`,
+    `echo "OPS_CLONE_TARGET=$DST"`,
+  ].join("\n");
+}
+
+export function parseSiteCloneOutput(output: string): ParsedSiteCloneOutput {
+  const text = stripAnsi(output).replace(/\r/g, "");
+  const kv: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const m = line.match(/^OPS_CLONE_(OK|SOURCE|TARGET|WP|ERROR)=(.*)$/);
+    if (m) kv[m[1]!] = m[2]!.trim();
+  }
+  if (kv.OK === "1" && kv.TARGET) {
+    return {
+      ok: true,
+      targetDomain: kv.TARGET,
+      sourceDomain: kv.SOURCE,
+      isWordPress: kv.WP === "1",
+    };
+  }
+  const err = kv.ERROR || matchOpsLine(text, "OPS_CLONE_ERROR");
+  if (err) return { ok: false, error: humanizeCloneError(err) };
+  const hint = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("OPS_CLONE_"))
+    .slice(-6)
+    .join(" | ")
+    .slice(0, 220);
+  return {
+    ok: false,
+    error: hint ? `Clone incompleto (${hint})` : "Clone incompleto ou não verificado",
+  };
+}
+
+function humanizeCloneError(code: string): string {
+  const map: Record<string, string> = {
+    source_missing: "Site de origem não encontrado no servidor",
+    target_exists: "O domínio de destino já existe no servidor",
+    site_create_failed: "Falha ao criar o site de destino no WordOps",
+    target_missing_after_create: "Site criado, mas o diretório de destino não apareceu",
+    source_not_wordpress: "Origem não parece ser WordPress",
+    target_not_wordpress: "Destino não parece ser WordPress após criação",
+    rsync_failed: "Falha ao copiar arquivos (rsync)",
+    db_export_failed: "Falha ao exportar o banco da origem",
+    db_export_empty: "Dump do banco da origem veio vazio",
+    db_import_failed: "Falha ao importar o banco no destino",
+  };
+  return map[code] ?? `Erro no clone: ${code}`;
+}
+
+export function estimateSiteCloneProgress(output: string): number {
+  const text = stripAnsi(output).toLowerCase();
+  if (/ops_clone_ok=1/.test(text)) return 95;
+  if (/ops_clone_step=search_replace/.test(text)) return 80;
+  if (/ops_clone_step=import_target_db/.test(text)) return 70;
+  if (/ops_clone_step=export_source_db/.test(text)) return 55;
+  if (/ops_clone_step=rsync_files/.test(text)) return 40;
+  if (/ops_clone_step=preserving_target_wpconfig/.test(text)) return 30;
+  if (/ops_clone_step=create_target/.test(text) || /installing wordpress/.test(text)) return 20;
+  return 10;
+}
+
+export function siteCloneProbe(input: SiteCloneParams): readonly string[] {
+  return ["bash", "-lc", buildSiteCloneScript(input)];
 }
 
 export function ftpUserCreateProbe(domain: string, username: string, password: string): readonly string[] {

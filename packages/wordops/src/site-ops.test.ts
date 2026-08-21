@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSiteBackupScript,
+  buildSiteCloneScript,
   buildSiteCreateScript,
   buildSiteMigrateFinalizeScript,
   buildSiteMigrateSearchReplaceScript,
@@ -8,6 +9,7 @@ import {
   buildSiteWpAutologinScript,
   parseSiteBackupListOutput,
   parseSiteBackupOutput,
+  parseSiteCloneOutput,
   parseSiteRestoreOutput,
   parseSiteInfoOutput,
   parseSiteWpAutologinOutput,
@@ -68,6 +70,38 @@ describe("buildSiteBackupScript", () => {
     expect(script).toContain("invalid_backup_path");
     expect(script).not.toContain("esac");
     expect(script).toContain("${BACKUP_DIR#");
+    expect(script).toContain("RESTORE_MODE='full'");
+  });
+
+  it("builds db-only restore script", () => {
+    const script = buildSiteRestoreScript(
+      "exemplo.com.br",
+      "/var/backups/opspanel/exemplo.com.br/20260814120000",
+      "db",
+    );
+    expect(script).toContain("RESTORE_MODE='db'");
+    expect(script).toContain("wp db import");
+    expect(script).toContain("mode_requires_database");
+    expect(script).not.toContain("extracting_files");
+  });
+
+  it("builds wp-content restore script", () => {
+    const script = buildSiteRestoreScript(
+      "exemplo.com.br",
+      "/var/backups/opspanel/exemplo.com.br/20260814120000",
+      "wp-content",
+    );
+    expect(script).toContain("RESTORE_MODE='wp-content'");
+    expect(script).toContain("extracting_wp_content");
+    expect(script).not.toContain("wp db import");
+  });
+
+  it("parses backup integrity from list output", () => {
+    const listed = parseSiteBackupListOutput(
+      "OPS_BACKUP_ENTRY=20260814120000|/var/backups/opspanel/exemplo.com.br/20260814120000|1|12345|1|ok\nOPS_BACKUP_LIST_OK=1",
+    );
+    expect(listed[0]?.integrity).toBe("ok");
+    expect(listed[0]?.hasFiles).toBe(true);
   });
 
   it("parses restore success markers", () => {
@@ -103,6 +137,49 @@ describe("buildSiteBackupScript", () => {
     const parsed = parseSiteRestoreOutput("OPS_RESTORE_ERROR=backup_not_found\n");
     expect(parsed.ok).toBe(false);
     expect(parsed.error).toBe("Backup não encontrado no servidor.");
+  });
+});
+
+describe("buildSiteCloneScript", () => {
+  it("creates WP target then rsync + db + search-replace", () => {
+    const script = buildSiteCloneScript({
+      sourceDomain: "exemplo.com.br",
+      targetDomain: "staging.exemplo.com.br",
+      siteType: "wp",
+      asStaging: true,
+    });
+    expect(script).toContain("wo site create 'staging.exemplo.com.br' --wp");
+    expect(script).toContain("rsync -a --delete");
+    expect(script).toContain("wp db export");
+    expect(script).toContain("wp db import");
+    expect(script).toContain("wp search-replace");
+    expect(script).toContain("OPS_CLONE_OK=1");
+    expect(script).toContain("target_exists");
+  });
+
+  it("clones html sites without wp-cli db steps", () => {
+    const script = buildSiteCloneScript({
+      sourceDomain: "static.exemplo.com",
+      targetDomain: "staging.static.exemplo.com",
+      siteType: "html",
+    });
+    expect(script).toContain("--html");
+    expect(script).toContain("rsync -a --delete");
+    expect(script).not.toContain("wp db export");
+    expect(script).toContain("OPS_CLONE_WP=0");
+  });
+
+  it("parses clone success and errors", () => {
+    const ok = parseSiteCloneOutput(
+      "OPS_CLONE_WP=1\nOPS_CLONE_OK=1\nOPS_CLONE_SOURCE=a.com\nOPS_CLONE_TARGET=staging.a.com\n",
+    );
+    expect(ok.ok).toBe(true);
+    expect(ok.targetDomain).toBe("staging.a.com");
+    expect(ok.isWordPress).toBe(true);
+
+    const err = parseSiteCloneOutput("OPS_CLONE_ERROR=target_exists\n");
+    expect(err.ok).toBe(false);
+    expect(err.error).toContain("já existe");
   });
 });
 

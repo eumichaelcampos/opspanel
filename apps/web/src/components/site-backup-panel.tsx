@@ -2,9 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Cloud, Database, FileArchive, Loader2, RotateCcw, Shield, AlertTriangle, Save } from "lucide-react";
+import {
+  Archive,
+  Cloud,
+  Database,
+  FileArchive,
+  Loader2,
+  RotateCcw,
+  Shield,
+  AlertTriangle,
+  Save,
+  CheckCircle2,
+} from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  backupIntegrityLabel,
+  siteRestoreModeLabel,
+  type BackupIntegrity,
+  type SiteRestoreMode,
+} from "@opspanel/contracts";
 
 type BackupEntry = {
   path: string;
@@ -14,6 +31,7 @@ type BackupEntry = {
   filesSizeBytes: number;
   location?: "local" | "drive" | "both";
   driveFolderId?: string;
+  integrity?: BackupIntegrity;
 };
 
 type BackupPolicy = {
@@ -27,7 +45,7 @@ type BackupPolicy = {
   driveConnected?: boolean;
 };
 
-type RestoreTarget = { path?: string; driveFolderId?: string };
+type RestoreTarget = { path?: string; driveFolderId?: string; mode: SiteRestoreMode };
 
 type Props = {
   siteId: string;
@@ -35,9 +53,12 @@ type Props = {
   disabled?: boolean;
   backupPending?: boolean;
   restorePending?: boolean;
+  rollbackPending?: boolean;
   restoreTargetPath?: string | null;
   onBackup: () => void;
   onRestore: (target: RestoreTarget) => void;
+  /** Atalho: rollback full do backup local mais recente (site.rollback). */
+  onRollbackLatest?: () => void;
 };
 
 function formatBackupTimestamp(ts: string) {
@@ -63,18 +84,46 @@ function locationLabel(location?: BackupEntry["location"]) {
   return "Servidor";
 }
 
+function integrityBadge(integrity?: BackupIntegrity) {
+  if (integrity === "ok") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+        <CheckCircle2 className="h-3 w-3" />
+        {backupIntegrityLabel(integrity)}
+      </span>
+    );
+  }
+  if (integrity === "warning") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+        <AlertTriangle className="h-3 w-3" />
+        {backupIntegrityLabel(integrity)}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-muted">
+      <Shield className="h-3 w-3" />
+      {backupIntegrityLabel(integrity)}
+    </span>
+  );
+}
+
 export function SiteBackupPanel({
   siteId,
   domain,
   disabled = false,
   backupPending = false,
   restorePending = false,
+  rollbackPending = false,
   restoreTargetPath = null,
   onBackup,
   onRestore,
+  onRollbackLatest,
 }: Props) {
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState<RestoreTarget | null>(null);
+  const [restoreMode, setRestoreMode] = useState<SiteRestoreMode>("full");
   const [contents, setContents] = useState<BackupPolicy["contents"]>("files_and_database");
   const [keepLocal, setKeepLocal] = useState(7);
   const [schedule, setSchedule] = useState<BackupPolicy["schedule"]>("off");
@@ -136,17 +185,18 @@ export function SiteBackupPanel({
             Backups locais ficam em{" "}
             <code className="rounded bg-ink/5 px-1 text-[11px]">/var/backups/opspanel/{domain}/</code>. Antes de
             restaurar, o OpsPanel cria um backup de segurança. Cópias no Google Drive aliviam o disco do servidor.
+            A integridade é testada com gzip no servidor.
           </span>
         </p>
       </div>
 
-      <section className="rounded-card border border-ink/10 bg-white/70 p-4 space-y-4">
+      <section className="rounded-card border border-ink/10 bg-white/70 p-4 space-y-4 dark:bg-white/5">
         <h3 className="text-sm font-semibold text-ink">Política de backup</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="mb-1 block text-muted">Conteúdo</span>
             <select
-              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2"
+              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 dark:bg-ink/20"
               value={contents}
               onChange={(e) => setContents(e.target.value as BackupPolicy["contents"])}
               disabled={disabled}
@@ -162,7 +212,7 @@ export function SiteBackupPanel({
               type="number"
               min={0}
               max={30}
-              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2"
+              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 dark:bg-ink/20"
               value={keepLocal}
               onChange={(e) => setKeepLocal(Number(e.target.value))}
               disabled={disabled}
@@ -172,7 +222,7 @@ export function SiteBackupPanel({
           <label className="block text-sm">
             <span className="mb-1 block text-muted">Agendamento</span>
             <select
-              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2"
+              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 dark:bg-ink/20"
               value={schedule}
               onChange={(e) => setSchedule(e.target.value as BackupPolicy["schedule"])}
               disabled={disabled}
@@ -186,7 +236,7 @@ export function SiteBackupPanel({
           <label className="block text-sm">
             <span className="mb-1 block text-muted">Horário (Brasília)</span>
             <select
-              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2"
+              className="w-full rounded-card border border-ink/20 bg-white px-3 py-2 dark:bg-ink/20"
               value={scheduleHour}
               onChange={(e) => setScheduleHour(Number(e.target.value))}
               disabled={disabled || schedule === "off"}
@@ -222,7 +272,7 @@ export function SiteBackupPanel({
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-card border border-ink/15 bg-white px-4 py-2 text-sm font-medium hover:bg-ink/5 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-card border border-ink/15 bg-white px-4 py-2 text-sm font-medium hover:bg-ink/5 disabled:opacity-60 dark:bg-ink/20"
             disabled={disabled || savePolicy.isPending}
             onClick={() => savePolicy.mutate()}
           >
@@ -238,34 +288,71 @@ export function SiteBackupPanel({
         {policyMsg ? <p className="text-sm text-muted">{policyMsg}</p> : null}
       </section>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-ink">Backups do site</h3>
           <p className="text-sm text-muted">{backups.length} backup(s)</p>
         </div>
-        <button
-          type="button"
-          disabled={disabled || backupPending || restorePending}
-          onClick={onBackup}
-          className={cn(
-            "inline-flex items-center gap-2 rounded-card border px-4 py-2.5 text-sm font-medium transition disabled:opacity-60",
-            backupPending
-              ? "border-accent bg-accent/10 text-accent ring-1 ring-accent/30"
-              : "border-accent/40 bg-accent text-white hover:bg-accent/90",
-          )}
-        >
-          {backupPending ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Criando…
-            </>
-          ) : (
-            <>
-              <Archive className="h-4 w-4" />
-              Novo backup
-            </>
-          )}
-        </button>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-muted">Modo ao restaurar</span>
+            <select
+              className="rounded-card border border-ink/20 bg-white px-3 py-2 text-sm dark:bg-ink/20"
+              value={restoreMode}
+              onChange={(e) => setRestoreMode(e.target.value as SiteRestoreMode)}
+              disabled={disabled || restorePending}
+            >
+              <option value="full">{siteRestoreModeLabel("full")}</option>
+              <option value="db">{siteRestoreModeLabel("db")}</option>
+              <option value="files">{siteRestoreModeLabel("files")}</option>
+              <option value="wp-content">{siteRestoreModeLabel("wp-content")}</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={disabled || backupPending || restorePending}
+            onClick={onBackup}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-card border px-4 py-2.5 text-sm font-medium transition disabled:opacity-60",
+              backupPending
+                ? "border-accent bg-accent/10 text-accent ring-1 ring-accent/30"
+                : "border-accent/40 bg-accent text-white hover:bg-accent/90",
+            )}
+          >
+            {backupPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Criando…
+              </>
+            ) : (
+              <>
+                <Archive className="h-4 w-4" />
+                Novo backup
+              </>
+            )}
+          </button>
+          {onRollbackLatest ? (
+            <button
+              type="button"
+              disabled={disabled || backupPending || restorePending || rollbackPending || backups.length === 0}
+              onClick={onRollbackLatest}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-card border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-60",
+                rollbackPending
+                  ? "border-warning bg-warning/10 text-warning"
+                  : "border-warning/50 bg-warning/10 text-warning hover:bg-warning/20",
+              )}
+              title="Restaura o backup local mais recente em modo completo"
+            >
+              {rollbackPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4" />
+              )}
+              Rollback
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {backupsLoading ? (
@@ -282,7 +369,7 @@ export function SiteBackupPanel({
           </button>
         </div>
       ) : backups.length === 0 ? (
-        <div className="rounded-card border border-white/80 bg-white/60 px-4 py-6 text-center text-sm text-muted">
+        <div className="rounded-card border border-white/80 bg-white/60 px-4 py-6 text-center text-sm text-muted dark:border-white/10 dark:bg-white/5">
           Nenhum backup encontrado. Clique em <strong>Novo backup</strong> para criar o primeiro.
         </div>
       ) : (
@@ -296,7 +383,7 @@ export function SiteBackupPanel({
                 key={`${entry.timestamp}-${entry.path || entry.driveFolderId}`}
                 className={cn(
                   "flex flex-col gap-3 rounded-card border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
-                  isRestoring ? "border-warning/40 bg-warning/5" : "border-white/80 bg-white/80",
+                  isRestoring ? "border-warning/40 bg-warning/5" : "border-white/80 bg-white/80 dark:border-white/10 dark:bg-white/5",
                 )}
               >
                 <div className="min-w-0 flex-1">
@@ -324,6 +411,7 @@ export function SiteBackupPanel({
                     {entry.hasFiles !== false ? (
                       <span className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-muted">Arquivos</span>
                     ) : null}
+                    {integrityBadge(entry.integrity)}
                   </div>
                   <p className="mt-1 text-xs text-muted">{formatSize(entry.filesSizeBytes)}</p>
                 </div>
@@ -334,6 +422,7 @@ export function SiteBackupPanel({
                     setConfirm({
                       path: entry.path || undefined,
                       driveFolderId: entry.driveFolderId,
+                      mode: restoreMode,
                     })
                   }
                   className={cn(
@@ -363,14 +452,14 @@ export function SiteBackupPanel({
 
       {confirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl border border-white/20 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md rounded-xl border border-white/20 bg-white p-5 shadow-xl dark:bg-surface">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
               <div>
                 <h4 className="font-semibold text-ink">Confirmar restauração</h4>
                 <p className="mt-2 text-sm text-muted">
-                  O site <strong>{domain}</strong> será substituído por este backup. Um backup de segurança será
-                  criado antes.
+                  O site <strong>{domain}</strong> será atualizado com este backup (
+                  {siteRestoreModeLabel(confirm.mode)}). Um backup de segurança será criado antes.
                 </p>
                 <p className="mt-2 font-mono text-[11px] break-all text-muted">
                   {confirm.path || `Google Drive ${confirm.driveFolderId}`}

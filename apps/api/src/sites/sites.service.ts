@@ -26,6 +26,8 @@ import {
   siteCreateInputSchema,
   siteBackupInputSchema,
   siteRestoreInputSchema,
+  siteCloneInputSchema,
+  siteRollbackInputSchema,
   siteBackupPolicyPatchSchema,
   DEFAULT_BACKUP_POLICY,
   computeNextBackupRun,
@@ -880,6 +882,7 @@ export class SitesService {
     const backups = parseSiteBackupListOutput(`${result.stdout}\n${result.stderr}`).map((entry) => ({
       ...entry,
       hasFiles: entry.hasFiles,
+      integrity: entry.integrity,
       location: "local" as "local" | "drive" | "both",
     }));
 
@@ -905,6 +908,7 @@ export class SitesService {
           hasDatabase: remote.hasDatabase,
           hasFiles: remote.hasFiles,
           filesSizeBytes: remote.filesSizeBytes,
+          integrity: "unknown" as const,
           location: "drive",
           driveFolderId: remote.folderId,
         });
@@ -1000,10 +1004,146 @@ export class SitesService {
       targetId: siteId,
       result: "success",
       ipAddress: ip,
-      metadata: { jobId: job.id, domain: site.domain, backupPath: parsed.data.backupPath },
+      metadata: {
+        jobId: job.id,
+        domain: site.domain,
+        backupPath: parsed.data.backupPath,
+        mode: parsed.data.mode ?? "full",
+      },
     });
 
     return { jobId: job.id, status: job.status };
+  }
+
+  async clone(user: SessionUser, siteId: string, body: unknown, ip?: string) {
+    this.assertWrite(user);
+    const site = await this.findSiteOrThrow(user, siteId);
+
+    const parsed = siteCloneInputSchema.safeParse({ ...(body as object), siteId });
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: { code: "VALIDATION_ERROR", message: "Dados de clone inválidos.", details: parsed.error.flatten() },
+      });
+    }
+
+    const targetDomain = parsed.data.targetDomain.toLowerCase();
+    if (targetDomain === site.domain.toLowerCase()) {
+      throw new BadRequestException({
+        error: { code: "VALIDATION_ERROR", message: "O domínio de destino deve ser diferente do atual." },
+      });
+    }
+
+    const siteType = (site.siteType ?? "").toLowerCase();
+    if (siteType === "proxy" || siteType === "alias") {
+      throw new BadRequestException({
+        error: {
+          code: "UNSUPPORTED_SITE_TYPE",
+          message: "Clone de sites proxy/alias não é suportado neste MVP.",
+        },
+      });
+    }
+
+    const conflict = await this.prisma.client.site.findFirst({
+      where: {
+        organizationId: user.organizationId,
+        domain: targetDomain,
+        deletedAt: null,
+      },
+    });
+    if (conflict) {
+      throw new BadRequestException({
+        error: { code: "DOMAIN_CONFLICT", message: "Este domínio já está cadastrado no painel." },
+      });
+    }
+
+    await this.quotas.assertCanCreateSite();
+
+    const job = await this.jobs.createOperationJob({
+      organizationId: user.organizationId,
+      requestedById: user.id,
+      serverId: site.serverId,
+      operationKey: OperationKeys.SiteClone,
+      input: { ...parsed.data, targetDomain },
+    });
+
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorUserId: user.id,
+      action: "site.clone.requested",
+      targetType: "site",
+      targetId: siteId,
+      result: "success",
+      ipAddress: ip,
+      metadata: {
+        jobId: job.id,
+        sourceDomain: site.domain,
+        targetDomain,
+        asStaging: parsed.data.asStaging ?? true,
+      },
+    });
+
+    return { jobId: job.id, status: job.status };
+  }
+
+  /**
+   * Rollback: atalho sobre restore full do backup mais recente (ou caminho informado).
+   * Cria job SiteRollback; o worker resolve o snapshot se necessário.
+   */
+  async rollback(user: SessionUser, siteId: string, body: unknown, ip?: string) {
+    this.assertWrite(user);
+    const site = await this.findSiteOrThrow(user, siteId);
+
+    const parsed = siteRollbackInputSchema.safeParse({ ...(body as object), siteId });
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: { code: "VALIDATION_ERROR", message: "Rollback inválido.", details: parsed.error.flatten() },
+      });
+    }
+
+    let backupPath = parsed.data.backupPath;
+    if (backupPath) {
+      const expectedPrefix = `/var/backups/opspanel/${site.domain.toLowerCase()}/`;
+      if (!backupPath.startsWith(expectedPrefix)) {
+        throw new BadRequestException({
+          error: { code: "VALIDATION_ERROR", message: "Este backup não pertence ao site." },
+        });
+      }
+    } else {
+      const listed = await this.listBackups(user, siteId);
+      const local = listed.backups.find(
+        (b) => b.path && b.path.startsWith(`/var/backups/opspanel/${site.domain.toLowerCase()}/`),
+      );
+      if (!local?.path) {
+        throw new BadRequestException({
+          error: {
+            code: "NO_BACKUP",
+            message: "Nenhum backup local encontrado. Crie um backup antes do rollback.",
+          },
+        });
+      }
+      backupPath = local.path;
+    }
+
+    const job = await this.jobs.createOperationJob({
+      organizationId: user.organizationId,
+      requestedById: user.id,
+      serverId: site.serverId,
+      operationKey: OperationKeys.SiteRollback,
+      input: { siteId, backupPath },
+    });
+
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorUserId: user.id,
+      action: "site.rollback.requested",
+      targetType: "site",
+      targetId: siteId,
+      result: "success",
+      ipAddress: ip,
+      metadata: { jobId: job.id, domain: site.domain, backupPath },
+    });
+
+    return { jobId: job.id, status: job.status, backupPath };
   }
 
   async deleteSite(user: SessionUser, siteId: string, body: unknown, ip?: string) {

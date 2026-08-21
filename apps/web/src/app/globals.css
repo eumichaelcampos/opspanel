@@ -4,39 +4,147 @@
 
 :root {
   color-scheme: light;
+  --ink: 22 34 55;
+  --muted: 108 114 128;
+  --accent: 201 109 58;
+  --warm: 234 192 167;
+  --cool: 198 200 203;
+  --dark: 23 23 23;
+  --success: 40 122 90;
+  --warning: 167 116 34;
+  --danger: 181 72 72;
+  --surface: 255 255 255;
+  --panel: 255 255 255;
+  --border: 22 34 55;
+  --ring: 201 109 58;
+  --bg-glow-1: rgba(234, 192, 167, 0.55);
+  --bg-glow-2: rgba(198, 200, 203, 0.45);
+  --bg-glow-3: rgba(201, 109, 58, 0.08);
+  --bg-base-1: #f5ebe3;
+  --bg-base-2: #e8ebf0;
+  --bg-base-3: #dde2ea;
+  --glass-panel: rgb(255 255 255 / 0.55);
+  --glass-card: rgb(255 255 255 / 0.72);
+  --glass-border: rgb(255 255 255 / 0.8);
+  --glass-shadow: 0 8px 32px rgba(22, 34, 55, 0.08);
+  --nav-active-bg: rgb(255 255 255 / 0.85);
+  --nav-active-fg: rgb(var(--accent));
+  --nav-hover-bg: rgb(255 255 255 / 0.45);
+  --input-bg: rgb(255 255 255 / 0.9);
+  --input-border: rgb(22 34 55 / 0.22);
+  --hero-from: rgb(255 255 255 / 0.7);
+  --hero-via: rgb(255 255 255 / 0.5);
+  --hero-to: rgb(255 255 255 / 0.3);
+}
+
+.dark {
+  color-scheme: dark;
+  /* SiteOps-inspired dark palette */
+  --ink: 244 244 248;
+  --muted: 142 142 159;
+  --accent: 139 92 246;
+  --warm: 167 139 250;
+  --cool: 94 106 134;
+  --dark: 9 9 21;
+  --success: 45 212 191;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  --surface: 22 22 37;
+  --panel: 18 18 32;
+  --border: 38 38 53;
+  --ring: 139 92 246;
+  --bg-glow-1: rgba(139, 92, 246, 0.18);
+  --bg-glow-2: rgba(45, 212, 191, 0.08);
+  --bg-glow-3: rgba(99, 102, 241, 0.1);
+  --bg-base-1: #090915;
+  --bg-base-2: #0c0c1a;
+  --bg-base-3: #10101f;
+  --glass-panel: rgb(18 18 32 / 0.88);
+  --glass-card: rgb(22 22 37 / 0.92);
+  --glass-border: rgb(255 255 255 / 0.07);
+  --glass-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(139, 92, 246, 0.04);
+  --nav-active-bg: rgb(139 92 246 / 0.22);
+  --nav-active-fg: rgb(255 255 255);
+  --nav-hover-bg: rgb(255 255 255 / 0.05);
+  --input-bg: rgb(12 12 24 / 0.9);
+  --input-border: rgb(255 255 255 / 0.12);
+  --hero-from: rgb(22 22 37 / 0.95);
+  --hero-via: rgb(18 18 32 / 0.9);
+  --hero-to: rgb(14 14 28 / 0.85);
 }
 
 body {
   @apply min-h-screen text-ink antialiased;
   background:
-    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(234, 192, 167, 0.55) 0%, transparent 55%),
-    radial-gradient(ellipse 70% 50% at 90% 10%, rgba(198, 200, 203, 0.45) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(201, 109, 58, 0.08) 0%, transparent 45%),
-    linear-gradient(145deg, #f5ebe3 0%, #e8ebf0 42%, #dde2ea 100%);
+    radial-gradient(ellipse 80% 55% at 8% 0%, var(--bg-glow-1) 0%, transparent 55%),
+    radial-gradient(ellipse 65% 45% at 92% 8%, var(--bg-glow-2) 0%, transparent 50%),
+    radial-gradient(ellipse 55% 40% at 50% 100%, var(--bg-glow-3) 0%, transparent 45%),
+    linear-gradient(145deg, var(--bg-base-1) 0%, var(--bg-base-2) 42%, var(--bg-base-3) 100%);
   background-attachment: fixed;
+  transition: color 0.2s ease, background 0.25s ease;
 }
 
 .glass-panel {
-  @apply rounded-shell border border-white/80 shadow-glass backdrop-blur-2xl;
-  background-color: rgb(255 255 255 / 0.55);
+  @apply rounded-shell backdrop-blur-2xl;
+  background-color: var(--glass-panel);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 .glass-card {
-  @apply rounded-card border border-white/75 shadow-glass backdrop-blur-md;
-  background-color: rgb(255 255 255 / 0.72);
+  @apply rounded-card backdrop-blur-md;
+  background-color: var(--glass-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.dark .glass-card {
+  background-image: radial-gradient(ellipse 80% 60% at 10% 0%, rgba(139, 92, 246, 0.08) 0%, transparent 55%);
 }
 
 .glass-card-dark {
-  @apply rounded-card border border-white/10 text-white shadow-glass backdrop-blur-xl;
+  @apply rounded-card border text-white shadow-glass backdrop-blur-xl;
   background-color: rgb(22 34 55 / 0.85);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+.dark .glass-card-dark {
+  background-color: rgb(12 12 24 / 0.95);
+  border-color: rgb(255 255 255 / 0.08);
 }
 
 .dashboard-hero {
-  @apply relative overflow-hidden rounded-shell border border-white/80 bg-gradient-to-br from-white/70 via-white/50 to-white/30 p-6 shadow-glass backdrop-blur-xl;
+  @apply relative overflow-hidden rounded-shell p-6 backdrop-blur-xl;
+  background: linear-gradient(135deg, var(--hero-from), var(--hero-via), var(--hero-to));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.dark .dashboard-hero::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: -20% auto auto -10%;
+  width: 55%;
+  height: 70%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.22) 0%, transparent 70%);
 }
 
 .dashboard-table-row {
-  @apply border-b border-white/60 transition hover:bg-white/50 last:border-0;
+  @apply border-b transition last:border-0;
+  border-color: rgb(var(--border) / 0.35);
+}
+
+.dashboard-table-row:hover {
+  background-color: rgb(var(--surface) / 0.45);
+}
+
+.dark .dashboard-table-row {
+  border-color: rgb(255 255 255 / 0.06);
+}
+
+.dark .dashboard-table-row:hover {
+  background-color: rgb(255 255 255 / 0.04);
 }
 
 .wizard-enter {
@@ -54,23 +162,42 @@ body {
   }
 }
 
+.text-gradient-brand {
+  background: linear-gradient(90deg, #c96d3a 0%, #e8a07a 55%, #162237 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.dark .text-gradient-brand {
+  background: linear-gradient(90deg, #c4b5fd 0%, #818cf8 50%, #67e8f9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 @layer components {
-  /* Controles de formulário: borda sempre legível no fundo claro do painel */
   input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]):not([type="range"]):not([type="color"]),
   textarea,
   select {
     border-width: 1px;
     border-style: solid;
-    /* Ganha de border-white/* dos utilitários: inputs precisam de contraste no fundo claro */
-    border-color: rgb(22 34 55 / 0.22) !important;
+    border-color: var(--input-border) !important;
+    background-color: var(--input-bg);
+    color: rgb(var(--ink));
   }
 
   input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]):not([type="range"]):not([type="color"]):focus,
   textarea:focus,
   select:focus {
-    border-color: rgb(201 109 58 / 0.55) !important;
+    border-color: rgb(var(--ring) / 0.55) !important;
     outline: none;
-    box-shadow: 0 0 0 3px rgb(201 109 58 / 0.18);
+    box-shadow: 0 0 0 3px rgb(var(--ring) / 0.18);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--muted) / 0.85);
   }
 
   .btn {
@@ -82,28 +209,150 @@ body {
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-ink/15 bg-white/80 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-white disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card px-3 py-1.5 text-sm font-medium text-ink transition disabled:pointer-events-none disabled:opacity-50;
+    border: 1px solid rgb(var(--border) / 0.2);
+    background-color: rgb(var(--surface) / 0.75);
+  }
+
+  .dark .btn-secondary {
+    border-color: rgb(255 255 255 / 0.1);
+    background-color: rgb(255 255 255 / 0.05);
+  }
+
+  .btn-secondary:hover {
+    background-color: rgb(var(--surface) / 0.95);
+  }
+
+  .dark .btn-secondary:hover {
+    background-color: rgb(255 255 255 / 0.09);
   }
 
   .btn-accent-outline {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-accent/30 bg-white/80 px-3 py-1.5 text-sm font-medium text-accent transition hover:bg-accent/5 disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card px-3 py-1.5 text-sm font-medium text-accent transition disabled:pointer-events-none disabled:opacity-50;
+    border: 1px solid rgb(var(--accent) / 0.35);
+    background-color: rgb(var(--surface) / 0.6);
+  }
+
+  .dark .btn-accent-outline {
+    background-color: rgb(139 92 246 / 0.08);
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-transparent bg-transparent px-3 py-1.5 text-sm font-medium text-muted transition hover:bg-white/70 hover:text-ink disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-transparent bg-transparent px-3 py-1.5 text-sm font-medium text-muted transition disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-ghost:hover {
+    color: rgb(var(--ink));
+    background-color: rgb(var(--surface) / 0.55);
+  }
+
+  .dark .btn-ghost:hover {
+    background-color: rgb(255 255 255 / 0.06);
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-card border border-danger/30 bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition hover:bg-danger/15 disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-card px-3 py-1.5 text-sm font-medium text-danger transition disabled:pointer-events-none disabled:opacity-50;
+    border: 1px solid rgb(var(--danger) / 0.35);
+    background-color: rgb(var(--danger) / 0.12);
   }
 
   .btn-sm {
     @apply px-2.5 py-1 text-xs;
+  }
+
+  .theme-icon-btn {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full transition;
+    border: 1px solid var(--glass-border);
+    background-color: rgb(var(--surface) / 0.45);
+    color: rgb(var(--muted));
+  }
+
+  .theme-icon-btn:hover {
+    color: rgb(var(--ink));
+    background-color: rgb(var(--surface) / 0.7);
+  }
+
+  .dark .theme-icon-btn {
+    background-color: rgb(255 255 255 / 0.04);
+  }
+
+  .dark .theme-icon-btn:hover {
+    background-color: rgb(255 255 255 / 0.08);
   }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* Remapeia superfícies claras hardcoded para o tema SiteOps no dark */
+  .dark .bg-white,
+  .dark .bg-white\/95,
+  .dark .bg-white\/90,
+  .dark .bg-white\/85,
+  .dark .bg-white\/80,
+  .dark .bg-white\/75,
+  .dark .bg-white\/70,
+  .dark .bg-white\/65,
+  .dark .bg-white\/60,
+  .dark .bg-white\/55,
+  .dark .bg-white\/50,
+  .dark .bg-white\/45,
+  .dark .bg-white\/40,
+  .dark .bg-white\/30 {
+    background-color: rgb(255 255 255 / 0.055) !important;
+  }
+
+  .dark .hover\:bg-white:hover,
+  .dark .hover\:bg-white\/90:hover,
+  .dark .hover\:bg-white\/80:hover,
+  .dark .hover\:bg-white\/70:hover,
+  .dark .hover\:bg-white\/60:hover,
+  .dark .hover\:bg-white\/50:hover,
+  .dark .hover\:bg-white\/45:hover,
+  .dark .hover\:bg-white\/40:hover {
+    background-color: rgb(255 255 255 / 0.09) !important;
+  }
+
+  .dark .border-white,
+  .dark .border-white\/90,
+  .dark .border-white\/80,
+  .dark .border-white\/75,
+  .dark .border-white\/70,
+  .dark .border-white\/60,
+  .dark .border-white\/50 {
+    border-color: rgb(255 255 255 / 0.08) !important;
+  }
+
+  .dark .divide-white\/60 > :not([hidden]) ~ :not([hidden]),
+  .dark .divide-white\/70 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgb(255 255 255 / 0.08);
+  }
+
+  .dark .from-white\/70,
+  .dark .from-white\/60,
+  .dark .from-white {
+    --tw-gradient-from: rgb(22 22 37 / 0.95) var(--tw-gradient-from-position);
+    --tw-gradient-to: rgb(22 22 37 / 0) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+  }
+
+  .dark .via-white\/50,
+  .dark .via-white\/40,
+  .dark .via-white {
+    --tw-gradient-to: rgb(18 18 32 / 0) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), rgb(18 18 32 / 0.9) var(--tw-gradient-via-position), var(--tw-gradient-to);
+  }
+
+  .dark .to-white\/30,
+  .dark .to-white\/40,
+  .dark .to-white {
+    --tw-gradient-to: rgb(14 14 28 / 0.85) var(--tw-gradient-to-position);
+  }
+
+  .dark .ring-white\/80,
+  .dark .ring-white {
+    --tw-ring-color: rgb(255 255 255 / 0.1);
   }
 }

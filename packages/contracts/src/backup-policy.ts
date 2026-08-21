@@ -28,6 +28,10 @@ export const siteBackupInputSchema = z.object({
   source: z.enum(["manual", "schedule", "safety"]).optional(),
 });
 
+/** Modos de restauração granular (worker aplica best-effort no script remoto). */
+export const siteRestoreModeSchema = z.enum(["full", "db", "files", "wp-content"]);
+export type SiteRestoreMode = z.infer<typeof siteRestoreModeSchema>;
+
 export const siteRestoreInputSchema = z.object({
   siteId: z.string().uuid(),
   backupPath: z
@@ -37,9 +41,17 @@ export const siteRestoreInputSchema = z.object({
     .regex(/^\/var\/backups\/opspanel\/[a-z0-9.-]+\/[^/]+$/i, "Caminho de backup inválido")
     .optional(),
   driveFolderId: z.string().min(8).max(128).optional(),
+  mode: siteRestoreModeSchema.optional().default("full"),
 }).refine((v) => Boolean(v.backupPath || v.driveFolderId), {
   message: "Informe o backup local ou o backup no Google Drive.",
 });
+
+export function siteRestoreModeLabel(mode: SiteRestoreMode): string {
+  if (mode === "db") return "Somente banco";
+  if (mode === "files") return "Somente arquivos";
+  if (mode === "wp-content") return "Somente wp-content";
+  return "Completo (arquivos + banco)";
+}
 
 /** Próxima execução em America/Sao_Paulo (UTC-3, sem horário de verão). */
 export function computeNextBackupRun(
