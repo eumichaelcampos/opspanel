@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import {
   OperationKeys,
+  collectOpenAlerts,
   computeSecurityScore,
   resolveSiteInventory,
   type SecurityCheck,
@@ -17,10 +18,12 @@ import {
   type SiteInfoSnapshot,
   type SiteSecurityReport,
   type StackComponentState,
+  type WpSiteInventory,
 } from "@opspanel/contracts";
 import { PrismaService } from "../prisma/prisma.service";
 import { SessionUser } from "../auth/auth.guard";
 import { JobsService } from "../jobs/jobs.service";
+import { lookupWpVulnerabilities, type WpVulnHit } from "./wpvulnerability.client";
 
 function canManage(user: SessionUser) {
   return user.role === "owner" || user.role === "admin" || user.role === "operator";
@@ -47,6 +50,17 @@ function phpSupported(version?: string | null): SecurityCheck["severity"] {
   if (major < 8) return "critical";
   if (major === 8 && minor < 1) return "warning";
   return "ok";
+}
+
+function pluginSlug(name: string): string {
+  const base = name.includes("/") ? name.split("/")[0]! : name;
+  return base.replace(/\.php$/i, "").trim();
+}
+
+function vulnSeverityToCheck(sev: WpVulnHit["severity"]): SecurityCheck["severity"] {
+  if (sev === "critical" || sev === "high") return "critical";
+  if (sev === "medium" || sev === "low") return "warning";
+  return "warning";
 }
 
 function buildServerChecks(input: {
@@ -126,7 +140,9 @@ function buildServerChecks(input: {
   });
 
   if (scan?.listeningTcpPorts?.length) {
-    const risky = scan.listeningTcpPorts.filter((p) => ![22, 80, 443, 22222, 3306, 6379, 19999].includes(p) && p < 1024);
+    const risky = scan.listeningTcpPorts.filter(
+      (p) => ![22, 80, 443, 22222, 3306, 6379, 19999].includes(p) && p < 1024,
+    );
     checks.push({
       id: "listening_ports",
       label: "Portas TCP em escuta",
@@ -146,6 +162,112 @@ function buildServerChecks(input: {
     });
   }
 
+  if (scan) {
+    if (scan.lynisInstalled) {
+      const idx = scan.lynisHardeningIndex;
+      checks.push({
+        id: "lynis",
+        label: "Lynis (auditoria)",
+        severity: idx == null ? "unknown" : idx >= 70 ? "ok" : idx >= 50 ? "warning" : "critical",
+        detail:
+          idx != null
+            ? `Índice de hardening ${idx}/100 · ${scan.lynisWarnings ?? 0} avisos · ${scan.lynisSuggestions ?? 0} sugestões`
+            : "Instalado, mas sem relatório recente (rode: lynis audit system)",
+        actionHint: idx == null || idx < 70 ? "Rodar lynis audit system no servidor" : undefined,
+        href: `/servers/${input.serverId}`,
+      });
+    } else if (isFresh(input.scanAt)) {
+      checks.push({
+        id: "lynis",
+        label: "Lynis (auditoria)",
+        severity: "warning",
+        detail: "Não instalado. Pacote gratuito: apt install lynis",
+        actionHint: "Instalar Lynis",
+        href: `/servers/${input.serverId}`,
+      });
+    }
+
+    if (isFresh(input.scanAt) || scan.clamavInstalled) {
+      checks.push({
+        id: "clamav",
+        label: "ClamAV (antimalware)",
+        severity: scan.clamavInstalled ? (scan.clamavFresh ? "ok" : "warning") : "warning",
+        detail: scan.clamavInstalled
+          ? scan.clamavFresh
+            ? `Instalado · freshclam ativo${scan.clamavLastScanAt ? ` · log ${new Date(scan.clamavLastScanAt).toLocaleString("pt-BR")}` : ""}`
+            : "Instalado, mas freshclam parado (assinaturas podem estar velhas)"
+          : "Não instalado. apt install clamav clamav-daemon",
+        actionHint: scan.clamavInstalled ? undefined : "Instalar ClamAV",
+        href: `/servers/${input.serverId}`,
+      });
+    }
+
+    if (isFresh(input.scanAt) || scan.chkrootkitInstalled || scan.rkhunterInstalled) {
+      const hasRootkit = Boolean(scan.chkrootkitInstalled || scan.rkhunterInstalled);
+      const parts = [
+        scan.chkrootkitInstalled ? "chkrootkit" : null,
+        scan.rkhunterInstalled ? "rkhunter" : null,
+      ].filter(Boolean);
+      checks.push({
+        id: "rootkit_scanners",
+        label: "Detecção de rootkit",
+        severity: hasRootkit ? "ok" : "warning",
+        detail: hasRootkit
+          ? `Disponível: ${parts.join(", ")}`
+          : "Nenhum. apt install chkrootkit rkhunter",
+        actionHint: hasRootkit ? undefined : "Instalar scanners",
+        href: `/servers/${input.serverId}`,
+      });
+    }
+
+    if (isFresh(input.scanAt) || scan.crowdsecInstalled) {
+      checks.push({
+        id: "crowdsec",
+        label: "CrowdSec (IPS)",
+        severity: scan.crowdsecInstalled
+          ? scan.crowdsecRunning
+            ? "ok"
+            : "warning"
+          : "warning",
+        detail: scan.crowdsecInstalled
+          ? scan.crowdsecRunning
+            ? "Instalado e em execução (tier free)"
+            : "Instalado, mas serviço parado"
+          : "Não instalado. Ver https://docs.crowdsec.net (gratuito)",
+        actionHint: scan.crowdsecRunning ? undefined : "Ativar CrowdSec",
+        href: `/servers/${input.serverId}`,
+      });
+    }
+
+    if (isFresh(input.scanAt) || scan.unattendedUpgradesEnabled !== undefined) {
+      checks.push({
+        id: "unattended_upgrades",
+        label: "Atualizações automáticas (SO)",
+        severity: scan.unattendedUpgradesEnabled ? "ok" : "warning",
+        detail: scan.unattendedUpgradesEnabled
+          ? "unattended-upgrades ativo"
+          : "Desativado. apt install unattended-upgrades && dpkg-reconfigure -plow unattended-upgrades",
+        actionHint: scan.unattendedUpgradesEnabled ? undefined : "Ativar patches automáticos",
+        href: `/servers/${input.serverId}`,
+      });
+    }
+
+    if (isFresh(input.scanAt) || scan.aideInstalled) {
+      checks.push({
+        id: "aide",
+        label: "AIDE (integridade de arquivos)",
+        severity: scan.aideInstalled ? (scan.aideDbExists ? "ok" : "warning") : "warning",
+        detail: scan.aideInstalled
+          ? scan.aideDbExists
+            ? "Instalado com base de dados"
+            : "Instalado, mas sem DB (rode aideinit)"
+          : "Não instalado. apt install aide",
+        actionHint: scan.aideInstalled && scan.aideDbExists ? undefined : "Configurar AIDE",
+        href: `/servers/${input.serverId}`,
+      });
+    }
+  }
+
   if (input.serverStatus === "offline" || input.serverStatus === "critical") {
     checks.push({
       id: "server_status",
@@ -163,6 +285,8 @@ function buildSiteChecks(input: {
   siteId: string;
   serverId: string;
   info?: SiteInfoSnapshot | null;
+  wpInventory?: WpSiteInventory | null;
+  vulns?: WpVulnHit[];
 }): SecurityCheck[] {
   const inv = resolveSiteInventory(input.info);
   const checks: SecurityCheck[] = [];
@@ -179,7 +303,9 @@ function buildSiteChecks(input: {
     return checks;
   }
 
-  for (const item of [...inv.active, ...inv.inactive].filter((i) => i.category === "security" || i.id === "enabled" || i.id === "php")) {
+  for (const item of [...inv.active, ...inv.inactive].filter(
+    (i) => i.category === "security" || i.id === "enabled" || i.id === "php",
+  )) {
     if (item.id === "ssl") {
       checks.push({
         id: "ssl",
@@ -222,6 +348,55 @@ function buildSiteChecks(input: {
         href: `/sites/${input.siteId}?tab=manage`,
       });
     }
+  }
+
+  const wp = input.wpInventory;
+  if (wp) {
+    const updates =
+      (wp.coreUpdateAvailable ? 1 : 0) + (wp.pluginUpdates ?? 0) + (wp.themeUpdates ?? 0);
+    checks.push({
+      id: "wp_updates",
+      label: "Atualizações WordPress",
+      severity: updates === 0 ? "ok" : wp.coreUpdateAvailable ? "critical" : "warning",
+      detail:
+        updates === 0
+          ? "Core, plugins e temas atualizados"
+          : `${updates} atualização(ões) pendente(s)${wp.coreUpdateAvailable ? " (inclui core)" : ""}`,
+      actionHint: updates ? "Atualizar no Centro WP" : undefined,
+      href: `/wordpress`,
+    });
+  }
+
+  const vulns = input.vulns ?? [];
+  if (vulns.length) {
+    const criticalCount = vulns.filter((v) => v.severity === "critical" || v.severity === "high").length;
+    const top = vulns.slice(0, 3).map((v) => v.title.replace(/\s+/g, " ").slice(0, 80));
+    checks.push({
+      id: "wp_vulns",
+      label: "Vulnerabilidades conhecidas (WPVulnerability)",
+      severity: criticalCount ? "critical" : "warning",
+      detail: `${vulns.length} achado(s): ${top.join("; ")}${vulns.length > 3 ? "…" : ""}`,
+      actionHint: "Atualizar plugins/temas vulneráveis",
+      href: `/sites/${input.siteId}?tab=manage`,
+    });
+    for (const v of vulns.slice(0, 5)) {
+      checks.push({
+        id: `wp_vuln_${v.kind}_${v.slug}`,
+        label: `${v.kind === "core" ? "Core" : v.kind === "theme" ? "Tema" : "Plugin"}: ${v.slug}`,
+        severity: vulnSeverityToCheck(v.severity),
+        detail: `${v.title}${v.fixedIn ? ` · corrigido em ${v.fixedIn}+` : ""}${v.installedVersion ? ` · instalado ${v.installedVersion}` : ""}`,
+        href: v.link ?? `/wordpress`,
+        actionHint: "Ver CVE / atualizar",
+      });
+    }
+  } else if (wp && !wp.error) {
+    checks.push({
+      id: "wp_vulns",
+      label: "Vulnerabilidades conhecidas (WPVulnerability)",
+      severity: "ok",
+      detail: "Nenhuma CVE ativa para as versões inventariadas (API gratuita)",
+      href: `/wordpress`,
+    });
   }
 
   return checks;
@@ -303,15 +478,26 @@ export class SecurityService {
     };
   }
 
-  buildSiteReport(site: {
-    id: string;
-    domain: string;
-    serverId: string;
-    infoSnapshot: unknown;
-    server?: { name: string } | null;
-  }): SiteSecurityReport {
+  buildSiteReport(
+    site: {
+      id: string;
+      domain: string;
+      serverId: string;
+      infoSnapshot: unknown;
+      wpInventorySnapshot?: unknown;
+      server?: { name: string } | null;
+    },
+    vulns: WpVulnHit[] = [],
+  ): SiteSecurityReport {
     const info = site.infoSnapshot as SiteInfoSnapshot | null;
-    const checks = buildSiteChecks({ siteId: site.id, serverId: site.serverId, info });
+    const wpInventory = (site.wpInventorySnapshot as WpSiteInventory | null) ?? null;
+    const checks = buildSiteChecks({
+      siteId: site.id,
+      serverId: site.serverId,
+      info,
+      wpInventory,
+      vulns,
+    });
     return {
       siteId: site.id,
       domain: site.domain,
@@ -319,7 +505,7 @@ export class SecurityService {
       serverName: site.server?.name,
       score: computeSecurityScore(checks),
       checks,
-      isWordPress: Boolean(info?.isWordPress),
+      isWordPress: Boolean(info?.isWordPress || wpInventory),
     };
   }
 
@@ -338,11 +524,41 @@ export class SecurityService {
     ]);
 
     const serverReports = servers.map((s) => this.buildServerReport(s));
-    const siteReports = sites.map((s) => this.buildSiteReport(s));
+
+    const vulnBySite = new Map<string, WpVulnHit[]>();
+    const wpSites = sites
+      .map((s) => ({ site: s, inv: s.wpInventorySnapshot as WpSiteInventory | null }))
+      .filter((x) => x.inv && !x.inv.error)
+      .slice(0, 15);
+
+    await Promise.all(
+      wpSites.map(async ({ site, inv }) => {
+        if (!inv) return;
+        const plugins = (inv.plugins ?? [])
+          .filter((p) => p.status !== "inactive")
+          .slice(0, 12)
+          .map((p) => ({ slug: pluginSlug(p.name), version: p.version }));
+        const themes = (inv.themes ?? [])
+          .filter((t) => t.status === "active" || !t.status)
+          .slice(0, 4)
+          .map((t) => ({ slug: pluginSlug(t.name), version: t.version }));
+        const hits = await lookupWpVulnerabilities({
+          coreVersion: inv.coreVersion,
+          plugins,
+          themes,
+          maxItems: 10,
+        });
+        vulnBySite.set(site.id, hits);
+      }),
+    );
+
+    const siteReports = sites.map((s) => this.buildSiteReport(s, vulnBySite.get(s.id) ?? []));
     const sitesAtRisk = siteReports
       .filter((s) => s.score.critical > 0 || s.score.warning > 0 || s.score.grade === "D" || s.score.grade === "F")
       .sort((a, b) => a.score.score - b.score.score)
       .slice(0, 20);
+
+    const openAlerts = collectOpenAlerts({ servers: serverReports, sites: siteReports }).slice(0, 80);
 
     const summaryBase = mergeScores([
       ...serverReports.map((s) => s.score),
@@ -351,6 +567,7 @@ export class SecurityService {
 
     return {
       summary: { ...summaryBase, servers: serverReports.length, sites: siteReports.length },
+      openAlerts,
       servers: serverReports,
       sitesAtRisk,
     };
@@ -367,7 +584,16 @@ export class SecurityService {
       include: { server: { select: { name: true } } },
     });
     if (!site) throw new NotFoundException({ error: { code: "NOT_FOUND", message: "Site não encontrado." } });
-    return this.buildSiteReport(site);
+    const inv = site.wpInventorySnapshot as WpSiteInventory | null;
+    let vulns: WpVulnHit[] = [];
+    if (inv && !inv.error) {
+      vulns = await lookupWpVulnerabilities({
+        coreVersion: inv.coreVersion,
+        plugins: (inv.plugins ?? []).slice(0, 12).map((p) => ({ slug: pluginSlug(p.name), version: p.version })),
+        themes: (inv.themes ?? []).slice(0, 4).map((t) => ({ slug: pluginSlug(t.name), version: t.version })),
+      });
+    }
+    return this.buildSiteReport(site, vulns);
   }
 
   async scanServer(user: SessionUser, serverId: string) {
