@@ -370,24 +370,42 @@ function buildSiteChecks(input: {
   const vulns = input.vulns ?? [];
   if (vulns.length) {
     const criticalCount = vulns.filter((v) => v.severity === "critical" || v.severity === "high").length;
-    const top = vulns.slice(0, 3).map((v) => v.title.replace(/\s+/g, " ").slice(0, 80));
+    const bySlug = new Map<string, WpVulnHit[]>();
+    for (const v of vulns) {
+      const key = `${v.kind}:${v.slug}`;
+      const list = bySlug.get(key) ?? [];
+      list.push(v);
+      bySlug.set(key, list);
+    }
+    const top = [...bySlug.entries()].slice(0, 5).map(([key, hits]) => {
+      const first = hits[0]!;
+      return `${first.slug} (${hits.length} CVE${hits.length > 1 ? "s" : ""})`;
+    });
     checks.push({
       id: "wp_vulns",
       label: "Vulnerabilidades conhecidas (WPVulnerability)",
       severity: criticalCount ? "critical" : "warning",
-      detail: `${vulns.length} achado(s): ${top.join("; ")}${vulns.length > 3 ? "…" : ""}`,
+      detail: `${vulns.length} achado(s) em ${bySlug.size} componente(s): ${top.join("; ")}${bySlug.size > 5 ? "…" : ""}`,
       actionHint: "Atualizar plugins/temas vulneráveis",
       href: `/sites/${input.siteId}?tab=manage`,
     });
-    for (const v of vulns.slice(0, 5)) {
+    let i = 0;
+    for (const [, hits] of bySlug) {
+      if (i >= 5) break;
+      const v = hits.sort((a, b) => {
+        const rank = (s: WpVulnHit["severity"]) =>
+          s === "critical" ? 0 : s === "high" ? 1 : s === "medium" ? 2 : 3;
+        return rank(a.severity) - rank(b.severity);
+      })[0]!;
       checks.push({
-        id: `wp_vuln_${v.kind}_${v.slug}`,
+        id: `wp_vuln_${v.kind}_${v.slug}_${i}`,
         label: `${v.kind === "core" ? "Core" : v.kind === "theme" ? "Tema" : "Plugin"}: ${v.slug}`,
         severity: vulnSeverityToCheck(v.severity),
-        detail: `${v.title}${v.fixedIn ? ` · corrigido em ${v.fixedIn}+` : ""}${v.installedVersion ? ` · instalado ${v.installedVersion}` : ""}`,
+        detail: `${hits.length} CVE(s) · ${v.title}${v.fixedIn ? ` · corrigido em ${v.fixedIn}+` : ""}${v.installedVersion ? ` · instalado ${v.installedVersion}` : ""}`,
         href: v.link ?? `/wordpress`,
         actionHint: "Ver CVE / atualizar",
       });
+      i += 1;
     }
   } else if (wp && !wp.error) {
     checks.push({
