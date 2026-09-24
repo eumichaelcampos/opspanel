@@ -9,6 +9,13 @@ echo "==> Fetching latest from origin/main..."
 git fetch origin main
 git pull origin main
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ./.env
+  set +a
+fi
+
 echo "==> Installing dependencies..."
 export CI=1
 NODE_ENV=development
