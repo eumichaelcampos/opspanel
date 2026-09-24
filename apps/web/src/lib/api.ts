@@ -28,8 +28,9 @@ export function wsUrl(path: string): string {
 
 function parseApiErrorMessage(status: number, rawBody: string): string {
   try {
-    const body = JSON.parse(rawBody) as { error?: { message?: string } };
+    const body = JSON.parse(rawBody) as { error?: { message?: string }; message?: string };
     if (body?.error?.message) return body.error.message;
+    if (body?.message && body.message !== "Internal server error") return body.message;
   } catch {
     /* resposta não-JSON (ex.: proxy Next com API offline) */
   }

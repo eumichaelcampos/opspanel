@@ -54,7 +54,8 @@ export class SetupService {
       env.LICENSE_KEY && isLicenseKeyFormat(env.LICENSE_KEY) && licenseState?.licenseKeyHash,
     );
 
-    const needsSetup = !setup.completed && (userCount === 0 || !licenseConfigured);
+    // Setup incompleto até marcar completed (mesmo se user/licença já existirem por tentativa anterior).
+    const needsSetup = !setup.completed;
 
     return {
       needsSetup,
@@ -106,9 +107,10 @@ export class SetupService {
     panelDomain?: string;
     panelUseHttps?: boolean;
   }) {
+    await this.ensureSetupState();
     const status = await this.getStatus();
-    if (!status.needsSetup && status.completed) {
-      throw new BadRequestException({ error: { code: "SETUP_DONE", message: "Setup já concluído." } });
+    if (status.completed) {
+      throw new BadRequestException({ error: { code: "SETUP_DONE", message: "Setup já concluído. Faça login." } });
     }
 
     const orgName = input.organizationName.trim();
@@ -124,16 +126,23 @@ export class SetupService {
 
     if (input.licenseServerUrl) {
       process.env.LICENSE_SERVER_URL = input.licenseServerUrl.replace(/\/$/, "");
+      try {
+        const { patchEnvFile } = await import("../license/env-file.js");
+        patchEnvFile("LICENSE_SERVER_URL", process.env.LICENSE_SERVER_URL);
+      } catch {
+        /* ignore */
+      }
     }
     process.env.LICENSE_KEY = licenseKey;
 
-    const slug = orgName
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 48) || "org";
+    const slug =
+      orgName
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 48) || "org";
 
     const passwordHash = await hashPassword(input.adminPassword);
 
@@ -174,7 +183,22 @@ export class SetupService {
       update: { role: "owner" },
     });
 
-    await this.license.activateLicenseKey(licenseKey);
+    try {
+      await this.license.activateLicenseKey(licenseKey);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Tentativa anterior pode ter ativado a chave e falhado depois: se já está ok, segue.
+      const summary = await this.license.getSummary().catch(() => null);
+      const alreadyOk =
+        Boolean(summary?.licenseKeyConfigured) &&
+        summary?.status === "active" &&
+        Boolean(loadEnv().LICENSE_KEY && isLicenseKeyFormat(loadEnv().LICENSE_KEY));
+      if (!alreadyOk) {
+        throw new BadRequestException({
+          error: { code: "LICENSE_ACTIVATE_FAILED", message: msg || "Falha ao ativar a licença." },
+        });
+      }
+    }
 
     if (LicenseCloudClient.fromEnv()) {
       await this.license.syncWithCloud("activate").catch(() => undefined);
@@ -195,9 +219,16 @@ export class SetupService {
       patchPanelUrls(panelUrl, panelUrl);
     }
 
-    await this.prisma.client.systemSetupState.update({
+    await this.prisma.client.systemSetupState.upsert({
       where: { id: "default" },
-      data: {
+      create: {
+        id: "default",
+        completed: true,
+        completedAt: new Date(),
+        panelDomain,
+        panelUrl,
+      },
+      update: {
         completed: true,
         completedAt: new Date(),
         panelDomain,
