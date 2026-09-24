@@ -111,13 +111,13 @@ export async function provisionNewWordOps(
   onStep({ key: "wordops", label: "Instalando WordOps. Isso pode levar vários minutos…", jobId: woId });
   await waitForJob(woId, signal);
 
-  onStep({ key: "stack", label: "Instalando Nginx, PHP e banco de dados…" });
+  onStep({ key: "stack", label: "Instalando stack WordOps…" });
   const stackId = await startJob(
     `/servers/${serverId}/stack`,
-    JSON.stringify({ action: "install", components: ["web"], force: true }),
+    JSON.stringify({ action: "install", components: ["stack"], force: true }),
   );
   jobIds.push(stackId);
-  onStep({ key: "stack", label: "Instalando Nginx, PHP e banco de dados…", jobId: stackId });
+  onStep({ key: "stack", label: "Instalando stack WordOps…", jobId: stackId });
   await waitForJob(stackId, signal);
 
   onStep({ key: "sync", label: "Atualizando o painel com o que foi instalado…" });

@@ -8,6 +8,13 @@ describe("buildStackActionScript", () => {
     expect(script).toContain("--fail2ban");
     expect(script).toContain("--ngxblocker");
   });
+
+  it("builds default stack install without --web", () => {
+    const script = buildStackActionScript("install", ["stack"], true);
+    expect(script).toContain("wo stack install --force");
+    expect(script).not.toContain("--web");
+    expect(script).not.toContain("--all");
+  });
 });
 
 describe("parseHealthCollectOutput", () => {

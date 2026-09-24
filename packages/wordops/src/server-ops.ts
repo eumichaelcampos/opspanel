@@ -44,6 +44,8 @@ function stripAnsi(text: string): string {
 }
 
 const STACK_COMPONENT_FLAGS: Record<string, string> = {
+  // Sem flag: `wo stack install` (stack padrão, não --web).
+  stack: "",
   all: "--all",
   web: "--web",
   admin: "--admin",
@@ -88,14 +90,18 @@ export function buildStackActionScript(
   components: string[],
   force?: boolean,
 ): string {
-  const flags = components
-    .map((c) => STACK_COMPONENT_FLAGS[c])
-    .filter(Boolean)
-    .join(" ");
+  const useDefaultStack = components.length === 0 || components.includes("stack");
+  const flags = useDefaultStack
+    ? ""
+    : components
+        .map((c) => STACK_COMPONENT_FLAGS[c])
+        .filter(Boolean)
+        .join(" ");
   const forceFlag = force ? " --force" : "";
   const needsForce = ["install", "remove", "purge", "upgrade"].includes(action);
   const autoForce = needsForce && !forceFlag ? " --force" : "";
-  return `${WO_PATH}; ${woCmd(`stack ${action} ${flags}${forceFlag}${autoForce}`)}`;
+  const flagsPart = flags ? ` ${flags}` : "";
+  return `${WO_PATH}; ${woCmd(`stack ${action}${flagsPart}${forceFlag}${autoForce}`)}`;
 }
 
 export function buildMaintenanceScript(): string {

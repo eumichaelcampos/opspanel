@@ -78,6 +78,7 @@ export const serverConnectionTestInputSchema = z.object({
 export type ServerConnectionTestInput = z.infer<typeof serverConnectionTestInputSchema>;
 
 export const serverStackComponentSchema = z.enum([
+  "stack",
   "all",
   "web",
   "admin",

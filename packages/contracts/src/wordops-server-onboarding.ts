@@ -27,7 +27,7 @@ export type OnboardingOperation =
   | "system-update"
   | "maintenance"
   | "wordops-install"
-  | "stack-install-web"
+  | "stack-install"
   | "stack-migrate-mariadb"
   | "stack-status"
   | "stack-install-security"
@@ -81,10 +81,10 @@ export const SERVER_ONBOARDING_STEPS: ServerOnboardingStepDef[] = [
   },
   {
     id: "stack_install",
-    label: "Stack LEMP (web)",
-    description: "Nginx, PHP, MariaDB, WP-CLI e Redis (wo stack install --web).",
-    woCommand: "wo stack install --web --force",
-    operation: "stack-install-web",
+    label: "Stack",
+    description: "Instala a stack WordOps padrão (Nginx, PHP, MariaDB, WP-CLI). Depois vêm segurança e monitoramento.",
+    woCommand: "wo stack install --force",
+    operation: "stack-install",
     required: true,
     reorderable: false,
     estimatedMinutes: 10,

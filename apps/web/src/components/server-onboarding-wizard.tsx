@@ -175,10 +175,10 @@ async function runStepOperation(serverId: string, step: ResolvedOnboardingStep):
       return apiFetch(`/servers/${serverId}/maintenance`, { method: "POST" });
     case "wordops-install":
       return apiFetch(`/servers/${serverId}/wordops/install`, { method: "POST", body: "{}" });
-    case "stack-install-web":
+    case "stack-install":
       return apiFetch(`/servers/${serverId}/stack`, {
         method: "POST",
-        body: JSON.stringify({ action: "install", components: ["web"], force: true }),
+        body: JSON.stringify({ action: "install", components: ["stack"], force: true }),
       });
     case "stack-migrate-mariadb":
       return apiFetch(`/servers/${serverId}/stack/migrate`, {
