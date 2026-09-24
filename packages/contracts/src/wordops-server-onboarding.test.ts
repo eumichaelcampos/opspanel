@@ -43,6 +43,18 @@ describe("isExistingWordOpsServer", () => {
   it("does not treat fresh install mid-wizard as existing", () => {
     expect(isExistingWordOpsServer(ctx({ wordopsVersion: "3.22.0" }))).toBe(false);
   });
+
+  it("keeps wizard after WordOps CLI until stack base exists", () => {
+    expect(
+      isExistingWordOpsServer(
+        ctx({
+          wordopsVersion: "3.23.1",
+          lastSyncedAt: "2026-01-01T00:00:00.000Z",
+          onboardingSnapshot: { completedSteps: ["connect", "system_update", "wordops_install"] },
+        }),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("existing WordOps onboarding", () => {

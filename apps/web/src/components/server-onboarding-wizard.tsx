@@ -178,7 +178,7 @@ async function runStepOperation(serverId: string, step: ResolvedOnboardingStep):
     case "stack-install":
       return apiFetch(`/servers/${serverId}/stack`, {
         method: "POST",
-        body: JSON.stringify({ action: "install", components: ["stack"], force: true }),
+        body: JSON.stringify({ action: "install", components: ["web"], force: true }),
       });
     case "stack-migrate-mariadb":
       return apiFetch(`/servers/${serverId}/stack/migrate`, {
@@ -298,6 +298,26 @@ function ExistingServerPanel({
     }
   }
 
+  async function installBaseStack() {
+    setError(null);
+    setInstallingId("web");
+    try {
+      const result = await apiFetch<{ jobId: string }>(`/servers/${serverId}/stack`, {
+        method: "POST",
+        body: JSON.stringify({ action: "install", components: ["web"], force: true }),
+      });
+      onJobStarted(result.jobId, "stack_install");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao instalar stack");
+    } finally {
+      setInstallingId(null);
+    }
+  }
+
+  const stackBaseMissing =
+    !inventory.installed.some((i) => i.id === "nginx") ||
+    !inventory.installed.some((i) => i.id === "mysql");
+
   const groupedAvailable = useMemo(() => {
     const groups = new Map<string, StackInventoryItem[]>();
     for (const item of inventory.available) {
@@ -362,6 +382,23 @@ function ExistingServerPanel({
             className="mt-3 rounded-card bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             Escanear stack
+          </button>
+        </div>
+      ) : null}
+
+      {stackBaseMissing && !inventory.needsHealthScan ? (
+        <div className="rounded-card border border-accent/30 bg-accent/5 px-4 py-3">
+          <p className="font-medium text-ink">Instalar stack base</p>
+          <p className="mt-1 text-sm text-muted">
+            Nginx, PHP, MariaDB e WP-CLI. Necessário antes de criar sites.
+          </p>
+          <button
+            type="button"
+            disabled={Boolean(activeJobId) || installingId === "web"}
+            onClick={() => void installBaseStack()}
+            className="mt-3 rounded-card bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {installingId === "web" ? "Instalando…" : "Instalar stack"}
           </button>
         </div>
       ) : null}

@@ -82,8 +82,10 @@ export const SERVER_ONBOARDING_STEPS: ServerOnboardingStepDef[] = [
   {
     id: "stack_install",
     label: "Stack",
-    description: "Instala a stack WordOps padrão (Nginx, PHP, MariaDB, WP-CLI). Depois vêm segurança e monitoramento.",
-    woCommand: "wo stack install --force",
+    description:
+      "Instala a stack base do WordOps: Nginx, PHP, MariaDB e WP-CLI. Segurança e monitoramento vêm depois.",
+    // WordOps exige flag de pacote: `wo stack install` sem args só mostra help (exit 0).
+    woCommand: "wo stack install --web --force",
     operation: "stack-install",
     required: true,
     reorderable: false,
@@ -203,10 +205,24 @@ const WEB_STACK_IDS = new Set(["nginx", "mysql", "redis", "php74", "php80", "php
 
 /** Servidor já tinha WordOps antes do wizard (não está instalando do zero). */
 export function isExistingWordOpsServer(ctx: ServerOnboardingContext): boolean {
-  if (!ctx.wordopsVersion) return false;
   if (ctx.onboardingCompletedAt) return true;
-  if (ctx.lastSyncedAt) return true;
+  if (!ctx.wordopsVersion) return false;
+
+  const snap = ctx.onboardingSnapshot;
+  const completed = snap?.completedSteps ?? [];
+  const hasProvisioningTrail = completed.length > 0;
+  const stackLooksInstalled =
+    completed.includes("stack_install") ||
+    (componentInstalled(ctx.stackComponents, "nginx") && componentInstalled(ctx.stackComponents, "mysql"));
+
+  // Provisionamento novo em andamento: manter o wizard até a stack base existir.
+  // (Evita sumir o onboarding só porque o WordOps CLI já foi instalado ou houve sync parcial.)
+  if (hasProvisioningTrail && !stackLooksInstalled) {
+    return false;
+  }
+
   if ((ctx.siteCount ?? 0) > 0) return true;
+  if (ctx.lastSyncedAt && stackLooksInstalled) return true;
 
   const components = ctx.stackComponents;
   if (!components?.length) return false;

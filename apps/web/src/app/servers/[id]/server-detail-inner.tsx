@@ -535,6 +535,22 @@ export default function ServerDetailPageInner() {
                     ) : null}
                   </div>
                 </div>
+                {!stackStateMap.get("nginx")?.installed || !stackStateMap.get("mysql")?.installed ? (
+                  <div className="rounded-card border border-accent/30 bg-accent/5 px-4 py-3">
+                    <p className="font-medium text-ink">Stack base ainda não instalada</p>
+                    <p className="mt-1 text-sm text-muted">
+                      Instala Nginx, PHP, MariaDB e WP-CLI (`wo stack install --web`). Depois você pode instalar segurança e monitoramento.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={actionsDisabled || runJob.isPending}
+                      onClick={() => runStack(["web"], "install")}
+                      className="mt-3 rounded-card bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      Instalar stack
+                    </button>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {options?.stackActions.map((a) => (
                     <button

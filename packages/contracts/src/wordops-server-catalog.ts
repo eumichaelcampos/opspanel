@@ -5,8 +5,7 @@
  */
 
 export const WORDOPS_STACK_GROUPS = [
-  { id: "stack", label: "Stack", flag: "", desc: "Stack padrão WordOps (Nginx, PHP, MariaDB, WP-CLI)" },
-  { id: "web", label: "Web", flag: "--web", desc: "Nginx, PHP, MariaDB, WP-CLI" },
+  { id: "web", label: "Stack", flag: "--web", desc: "Nginx, PHP, MariaDB, WP-CLI (stack base)" },
   { id: "admin", label: "Admin", flag: "--admin", desc: "phpMyAdmin, Adminer, Dashboard, Netdata, MySQLTuner" },
   { id: "utils", label: "Utils", flag: "--utils", desc: "OpcacheGUI, Webgrind, Anemometer" },
 ] as const;

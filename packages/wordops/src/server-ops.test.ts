@@ -9,11 +9,14 @@ describe("buildStackActionScript", () => {
     expect(script).toContain("--ngxblocker");
   });
 
-  it("builds default stack install without --web", () => {
-    const script = buildStackActionScript("install", ["stack"], true);
-    expect(script).toContain("wo stack install --force");
-    expect(script).not.toContain("--web");
-    expect(script).not.toContain("--all");
+  it("builds base stack install with --web", () => {
+    const script = buildStackActionScript("install", ["web"], true);
+    expect(script).toContain("wo stack install --web --force");
+  });
+
+  it("defaults empty install components to --web", () => {
+    const script = buildStackActionScript("install", [], true);
+    expect(script).toContain("wo stack install --web --force");
   });
 });
 

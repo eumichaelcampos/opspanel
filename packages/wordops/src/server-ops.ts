@@ -44,8 +44,6 @@ function stripAnsi(text: string): string {
 }
 
 const STACK_COMPONENT_FLAGS: Record<string, string> = {
-  // Sem flag: `wo stack install` (stack padrão, não --web).
-  stack: "",
   all: "--all",
   web: "--web",
   admin: "--admin",
@@ -90,13 +88,18 @@ export function buildStackActionScript(
   components: string[],
   force?: boolean,
 ): string {
-  const useDefaultStack = components.length === 0 || components.includes("stack");
-  const flags = useDefaultStack
-    ? ""
-    : components
-        .map((c) => STACK_COMPONENT_FLAGS[c])
-        .filter(Boolean)
-        .join(" ");
+  // WordOps: `wo stack install` sem pacotes só imprime help (exit 0). Garantir --web na stack base.
+  const normalized =
+    action === "install" && components.length === 0 ? ["web"] : components;
+  const flags = normalized
+    .map((c) => STACK_COMPONENT_FLAGS[c])
+    .filter(Boolean)
+    .join(" ");
+  if (!flags && ["install", "remove", "purge", "upgrade"].includes(action)) {
+    throw new Error(
+      "wo stack install exige pacotes (ex.: --web). Use components: [\"web\"] ou um componente específico.",
+    );
+  }
   const forceFlag = force ? " --force" : "";
   const needsForce = ["install", "remove", "purge", "upgrade"].includes(action);
   const autoForce = needsForce && !forceFlag ? " --force" : "";
