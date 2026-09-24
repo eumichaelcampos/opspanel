@@ -2,9 +2,11 @@
  * Deploy OpsPanel client em VPS via SSH.
  * Uso:
  *   OPSPANEL_SSH_HOST=x.x.x.x OPSPANEL_SSH_PASSWORD=... \
- *   SESSION_SECRET=... CREDENTIALS_ENCRYPTION_KEY=... LICENSE_KEY=... \
- *   LICENSE_SIGNING_SECRET=... LICENSE_REGISTER_SECRET=... \
+ *   SESSION_SECRET=... CREDENTIALS_ENCRYPTION_KEY=... \
  *   npx tsx apps/worker/scripts/deploy-client.ts
+ *
+ * LICENSE_KEY / SIGNING / REGISTER não são necessários no install.
+ * A licença é obtida em /setup após o painel subir.
  *
  * Não versionar segredos neste arquivo. Use variáveis de ambiente.
  */
@@ -20,13 +22,7 @@ const sshPort = Number(process.env.OPSPANEL_SSH_PORT ?? "22");
 const sshUser = process.env.OPSPANEL_SSH_USER ?? "root";
 const sshPassword = process.env.OPSPANEL_SSH_PASSWORD;
 
-const required = [
-  "SESSION_SECRET",
-  "CREDENTIALS_ENCRYPTION_KEY",
-  "LICENSE_KEY",
-  "LICENSE_SIGNING_SECRET",
-  "LICENSE_REGISTER_SECRET",
-] as const;
+const required = ["SESSION_SECRET", "CREDENTIALS_ENCRYPTION_KEY"] as const;
 
 for (const key of required) {
   if (!process.env[key]) {
@@ -42,9 +38,6 @@ if (!hostIp || !sshPassword) {
 const secrets = {
   SESSION_SECRET: process.env.SESSION_SECRET!,
   CREDENTIALS_ENCRYPTION_KEY: process.env.CREDENTIALS_ENCRYPTION_KEY!,
-  LICENSE_KEY: process.env.LICENSE_KEY!,
-  LICENSE_SIGNING_SECRET: process.env.LICENSE_SIGNING_SECRET!,
-  LICENSE_REGISTER_SECRET: process.env.LICENSE_REGISTER_SECRET!,
 };
 
 function execSsh(conn: Client, cmd: string, timeoutMs = 900_000): Promise<{ code: number | null; out: string }> {

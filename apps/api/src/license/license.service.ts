@@ -198,15 +198,23 @@ export class LicenseService implements OnModuleInit, OnModuleDestroy {
   private async applyCloudResponse(response: {
     plan: string;
     status: string;
+    entitlements?: Entitlements;
     entitlementsJwt: string;
     validUntil: string;
     billing?: LicenseSummary["billing"];
   }) {
     const env = loadEnv();
-    if (!env.LICENSE_SIGNING_SECRET) {
-      throw new Error("LICENSE_SIGNING_SECRET required for cloud sync.");
+    let entitlements: Entitlements;
+    if (env.LICENSE_SIGNING_SECRET && response.entitlementsJwt) {
+      entitlements = verifyEntitlementsJwt(response.entitlementsJwt, env.LICENSE_SIGNING_SECRET);
+    } else if (response.entitlements?.plan) {
+      // Install self-serve: confia no HTTPS do License Cloud sem compartilhar o secret HMAC.
+      entitlements = response.entitlements;
+    } else {
+      throw new Error(
+        "License Cloud não retornou entitlements e LICENSE_SIGNING_SECRET não está configurado.",
+      );
     }
-    const entitlements = verifyEntitlementsJwt(response.entitlementsJwt, env.LICENSE_SIGNING_SECRET);
     const status =
       response.status === "active"
         ? LicenseStatus.active
@@ -346,7 +354,7 @@ export class LicenseService implements OnModuleInit, OnModuleDestroy {
       return "Plano da licença não reconhecido. Atualize o OpsPanel para a versão mais recente.";
     }
     if (/signature|JWT signature|signing/i.test(msg)) {
-      return "Erro de assinatura: LICENSE_SIGNING_SECRET não confere com o publisher.";
+      return "Erro de assinatura da licença. Atualize o OpsPanel ou contate o suporte.";
     }
     if (/INSTANCE|Instância|vinculada/i.test(msg)) {
       return "Esta instância já está vinculada a outra licença. Tente novamente ou contate o suporte.";

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Instala OpsPanel client em VPS Ubuntu (WordOps). Rode como root após upload do código.
+# Instala OpsPanel client em VPS Ubuntu (WordOps). Rode como root após o código estar em OPSPANEL_DIR.
+# Não exige LICENSE_KEY / SIGNING / REGISTER: a licença é obtida depois em /setup.
 set -euo pipefail
 
 OPSPANEL_DIR="${OPSPANEL_DIR:-/root/opspanel}"
@@ -18,6 +19,7 @@ fi
 
 WEB_URL="${WEB_URL:-http://${HOST_IP}:3000}"
 API_URL="${API_URL:-http://${HOST_IP}:3001}"
+LICENSE_SERVER_URL="${LICENSE_SERVER_URL:-https://license.michaelcampos.com.br}"
 
 echo "==> OpsPanel client install em ${OPSPANEL_DIR} (HOST_IP=${HOST_IP})"
 
@@ -48,11 +50,21 @@ if [ ! -f package.json ]; then
   exit 1
 fi
 
-: "${SESSION_SECRET:?SESSION_SECRET obrigatório}"
-: "${CREDENTIALS_ENCRYPTION_KEY:?CREDENTIALS_ENCRYPTION_KEY obrigatório}"
-: "${LICENSE_KEY:?LICENSE_KEY obrigatório}"
-: "${LICENSE_SIGNING_SECRET:?LICENSE_SIGNING_SECRET obrigatório}"
-: "${LICENSE_REGISTER_SECRET:?LICENSE_REGISTER_SECRET obrigatório}"
+# Segredos locais do painel (não são chaves do hub de licença).
+if [ -z "${SESSION_SECRET:-}" ]; then
+  SESSION_SECRET="$(openssl rand -base64 32 | tr -d '\n')"
+  echo "==> SESSION_SECRET gerado automaticamente"
+fi
+if [ -z "${CREDENTIALS_ENCRYPTION_KEY:-}" ]; then
+  CREDENTIALS_ENCRYPTION_KEY="$(openssl rand -base64 32 | tr -d '\n')"
+  echo "==> CREDENTIALS_ENCRYPTION_KEY gerado automaticamente"
+fi
+
+# Preserva LICENSE_KEY se o admin já tiver colado no .env (reinstall).
+EXISTING_LICENSE_KEY=""
+if [ -f .env ]; then
+  EXISTING_LICENSE_KEY="$(grep -E '^LICENSE_KEY=' .env | head -1 | cut -d= -f2- || true)"
+fi
 
 cat > .env <<EOF
 NODE_ENV=production
@@ -64,19 +76,32 @@ WEB_URL=${WEB_URL}
 SESSION_SECRET=${SESSION_SECRET}
 CREDENTIALS_ENCRYPTION_KEY=${CREDENTIALS_ENCRYPTION_KEY}
 SKIP_SEED=1
-LICENSE_SERVER_URL=https://license.michaelcampos.com.br
+LICENSE_SERVER_URL=${LICENSE_SERVER_URL}
 GOOGLE_OAUTH_BROKER_URL=https://publisher.michaelcampos.com.br/v1
-LICENSE_REGISTER_SECRET=${LICENSE_REGISTER_SECRET}
-LICENSE_SIGNING_SECRET=${LICENSE_SIGNING_SECRET}
-LICENSE_KEY=${LICENSE_KEY}
 LICENSE_PLAN=free
 APP_VERSION=1.0.0
 UPDATE_GITHUB_REPO=eumichaelcampos/opspanel
 EOF
 
+if [ -n "${EXISTING_LICENSE_KEY}" ]; then
+  echo "LICENSE_KEY=${EXISTING_LICENSE_KEY}" >> .env
+fi
+
+# Opcionais: só se o instalador quiser pré-configurar (não são exigidos).
+if [ -n "${LICENSE_SIGNING_SECRET:-}" ]; then
+  echo "LICENSE_SIGNING_SECRET=${LICENSE_SIGNING_SECRET}" >> .env
+fi
+if [ -n "${LICENSE_REGISTER_SECRET:-}" ]; then
+  echo "LICENSE_REGISTER_SECRET=${LICENSE_REGISTER_SECRET}" >> .env
+fi
+if [ -n "${LICENSE_KEY:-}" ] && [ -z "${EXISTING_LICENSE_KEY}" ]; then
+  echo "LICENSE_KEY=${LICENSE_KEY}" >> .env
+fi
+
 mkdir -p apps/web
 echo "API_URL=${API_URL}" > apps/web/.env.local
 echo "NEXT_PUBLIC_GITHUB_REPO=eumichaelcampos/opspanel" >> apps/web/.env.local
+echo "NEXT_PUBLIC_LICENSE_SERVER_URL=${LICENSE_SERVER_URL}" >> apps/web/.env.local
 
 echo "==> Postgres + Redis (Docker)"
 # Em VPS, bind só em localhost
@@ -85,7 +110,7 @@ sed -i 's/"6379:6379"/"127.0.0.1:6379:6379"/' infra/docker/docker-compose.yml ||
 docker compose -f infra/docker/docker-compose.yml up -d postgres redis
 sleep 8
 
-echo "==> Build OpsPanel (banco vazio; setup cria a empresa do cliente)"
+echo "==> Build OpsPanel (banco vazio; /setup cria a empresa e pede a licença)"
 find . -name '*.sh' -exec sed -i 's/\r$//' {} +
 set -a
 # shellcheck disable=SC1091
@@ -112,4 +137,5 @@ echo ""
 echo "==> OpsPanel client OK"
 echo "  Painel: ${WEB_URL}/setup"
 echo "  API:    ${API_URL}/api/v1/health"
+echo "  Licença: solicite/ative no /setup (não é necessária no install)."
 curl -sf "${API_URL}/api/v1/health" || echo "(aguarde alguns segundos e teste de novo)"
