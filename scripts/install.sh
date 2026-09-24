@@ -23,13 +23,14 @@ if [ ! -f .env ]; then
 fi
 
 echo "==> Installing dependencies"
-pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+# .env pode ter NODE_ENV=production; install/build precisam de prisma/typescript (devDeps).
+NODE_ENV=development pnpm install --frozen-lockfile 2>/dev/null || NODE_ENV=development pnpm install
 
 echo "==> Generating Prisma client"
-pnpm db:generate
+NODE_ENV=development pnpm db:generate
 
 echo "==> Running migrations"
-pnpm --filter @opspanel/database exec prisma migrate deploy
+NODE_ENV=development pnpm --filter @opspanel/database exec prisma migrate deploy
 
 if [ "${SKIP_SEED:-}" != "1" ]; then
   echo "==> Seeding admin user (set SKIP_SEED=1 to skip)"
@@ -37,7 +38,7 @@ if [ "${SKIP_SEED:-}" != "1" ]; then
 fi
 
 echo "==> Building packages"
-pnpm build
+NODE_ENV=development pnpm build
 
 echo ""
 echo "Done. Start services:"
