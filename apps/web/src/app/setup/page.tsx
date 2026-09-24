@@ -13,6 +13,7 @@ type SetupStatus = {
   completed: boolean;
   hasUsers: boolean;
   licenseConfigured: boolean;
+  canRecover?: boolean;
   cloudConfigured: boolean;
   licenseServerUrl: string | null;
 };
@@ -30,10 +31,12 @@ export default function SetupPage() {
   const [licenseKey, setLicenseKey] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ["setup", "status"],
     queryFn: () => apiFetch<{ setup: SetupStatus }>("/setup/status"),
   });
+
+  const canRecover = Boolean(data?.setup.canRecover);
 
   useEffect(() => {
     if (data?.setup.licenseServerUrl) {
@@ -80,6 +83,23 @@ export default function SetupPage() {
     onError: (err) => setError(err instanceof Error ? err.message : "Falha no setup"),
   });
 
+  const recoverMutation = useMutation({
+    mutationFn: () =>
+      apiFetch("/setup/recover", {
+        method: "POST",
+        body: JSON.stringify({ adminEmail, adminPassword }),
+      }),
+    onSuccess: async () => {
+      setError(null);
+      await apiFetch("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+      });
+      router.push("/setup/servers");
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Falha ao recuperar setup"),
+  });
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
@@ -104,172 +124,235 @@ export default function SetupPage() {
           </p>
         </div>
 
-        <div className="flex gap-2 text-xs">
-          {[1, 2, 3].map((n) => (
-            <div
-              key={n}
-              className={`flex-1 rounded-full py-1 text-center ${step >= n ? "bg-accent text-white" : "bg-white/60 text-muted"}`}
-            >
-              {n === 1 ? "Conta" : n === 2 ? "Licença" : "Confirmar"}
-            </div>
-          ))}
-        </div>
-
-        {error ? <p className="rounded-card bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
-
-        {step === 1 ? (
-          <div className="space-y-4">
-            <label className="block space-y-1 text-sm">
-              <span className="text-muted">Nome da organização</span>
-              <input
-                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
-                value={orgName}
-                onChange={(e) => setOrgName(e.target.value)}
-                placeholder="Minha agência"
-                required
-              />
-            </label>
-            <label className="block space-y-1 text-sm">
-              <span className="text-muted">Seu nome</span>
-              <input
-                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
-                value={adminName}
-                onChange={(e) => setAdminName(e.target.value)}
-              />
-            </label>
-            <label className="block space-y-1 text-sm">
+        {canRecover ? (
+          <div className="space-y-3 rounded-card border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+            <p className="font-medium text-ink">Instalação incompleta detectada</p>
+            <p className="text-muted">
+              Já existem admin e licença, mas o setup não foi marcado como concluído. Informe o e-mail e a
+              senha do admin para finalizar sem gerar licença de novo.
+            </p>
+            <label className="block space-y-1">
               <span className="text-muted">E-mail admin</span>
               <input
-                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2"
                 type="email"
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
-                required
               />
             </label>
-            <label className="block space-y-1 text-sm">
-              <span className="text-muted">Senha (mín. 8 caracteres)</span>
+            <label className="block space-y-1">
+              <span className="text-muted">Senha</span>
               <input
-                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2"
                 type="password"
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
-                required
               />
             </label>
-            <label className="block space-y-1 text-sm">
-              <span className="text-muted">Domínio do painel (opcional)</span>
-              <input
-                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
-                value={panelDomain}
-                onChange={(e) => setPanelDomain(e.target.value)}
-                placeholder="painel.suaempresa.com"
-              />
-              <span className="text-xs text-muted">
-                Depois aponte o DNS (registro A) para o IP deste servidor. Sem domínio, use IP:3000 por enquanto.
-              </span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted">
-              <input
-                type="checkbox"
-                checked={panelUseHttps}
-                onChange={(e) => setPanelUseHttps(e.target.checked)}
-              />
-              Usar HTTPS neste domínio (recomendado)
-            </label>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
             <button
               type="button"
-              className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-medium text-white"
-              disabled={!orgName || !adminEmail || adminPassword.length < 8}
-              onClick={() => setStep(2)}
+              className="w-full rounded-card bg-accent px-3 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+              disabled={
+                recoverMutation.isPending || !adminEmail || adminPassword.length < 8
+              }
+              onClick={() => {
+                setError(null);
+                recoverMutation.mutate();
+              }}
             >
-              Continuar
+              {recoverMutation.isPending ? "Finalizando…" : "Finalizar instalação e entrar"}
+            </button>
+            <button
+              type="button"
+              className="w-full text-xs text-muted underline"
+              onClick={() => {
+                void refetch();
+                setStep(1);
+                setError(null);
+              }}
+            >
+              Ou refazer o fluxo completo
             </button>
           </div>
         ) : null}
 
-        {step === 2 ? (
-          <div className="space-y-4">
-            <div className="rounded-card border border-white/80 bg-white/60 p-4 text-sm text-muted">
-              <p className="font-medium text-ink">Obter licença free automaticamente</p>
-              <p className="mt-1">Usa o e-mail da conta admin para gerar e ativar a chave free.</p>
-              <button
-                type="button"
-                className="mt-3 w-full rounded-card bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={registerMutation.isPending || !adminEmail}
-                onClick={() => registerMutation.mutate()}
-              >
-                {registerMutation.isPending ? "Gerando licença…" : "Gerar licença free"}
-              </button>
+        {!canRecover ? (
+          <>
+            <div className="flex gap-2 text-xs">
+              {[1, 2, 3].map((n) => (
+                <div
+                  key={n}
+                  className={`flex-1 rounded-full py-1 text-center ${step >= n ? "bg-accent text-white" : "bg-white/60 text-muted"}`}
+                >
+                  {n === 1 ? "Conta" : n === 2 ? "Licença" : "Confirmar"}
+                </div>
+              ))}
             </div>
-            <div className="text-center text-xs text-muted">ou cole uma chave existente</div>
-            <label className="block space-y-1 text-sm">
-              <span className="text-muted">Chave de licença</span>
-              <input
-                className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 font-mono text-xs focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
-                value={licenseKey}
-                onChange={(e) => setLicenseKey(e.target.value)}
-                placeholder="oplic_live_..."
-              />
-            </label>
-            <details className="rounded-card border border-white/80 bg-white/40 p-3 text-sm">
-              <summary className="cursor-pointer text-muted">Opções avançadas</summary>
-              <label className="mt-3 block space-y-1">
-                <span className="text-muted">URL do serviço de licenças</span>
-                <input
-                  className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 font-mono text-xs focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
-                  value={licenseServerUrl}
-                  onChange={(e) => setLicenseServerUrl(e.target.value)}
-                  placeholder="https://license.example.com"
-                />
-              </label>
-            </details>
-            <div className="flex gap-2">
-              <button type="button" className="rounded-card border px-3 py-2 text-sm" onClick={() => setStep(1)}>
-                Voltar
-              </button>
-              <button
-                type="button"
-                className="flex-1 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={licenseKey.length < 20}
-                onClick={() => setStep(3)}
-              >
-                Continuar
-              </button>
-            </div>
-          </div>
-        ) : null}
 
-        {step === 3 ? (
-          <div className="space-y-4 text-sm">
-            <div className="rounded-card border border-white/80 bg-white/60 p-4 space-y-2">
-              <p><span className="text-muted">Organização:</span> {orgName}</p>
-              <p><span className="text-muted">Admin:</span> {adminEmail}</p>
-              <p>
-                <span className="text-muted">Domínio do painel:</span>{" "}
-                {panelDomain.trim()
-                  ? `${panelUseHttps ? "https" : "http"}://${panelDomain.trim()}`
-                  : "IP:porta (sem domínio ainda)"}
-              </p>
-              <p className="truncate font-mono text-xs"><span className="text-muted">Licença:</span> {licenseKey.slice(0, 20)}…</p>
-            </div>
-            <p className="text-xs text-muted">
-              Ao concluir, a licença é ativada e o próximo passo é conectar o servidor (novo ou com WordOps).
-            </p>
-            <div className="flex gap-2">
-              <button type="button" className="rounded-card border px-3 py-2 text-sm" onClick={() => setStep(2)}>
-                Voltar
-              </button>
-              <button
-                type="button"
-                className="flex-1 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={completeMutation.isPending}
-                onClick={() => completeMutation.mutate()}
-              >
-                {completeMutation.isPending ? "Ativando…" : "Concluir e entrar"}
-              </button>
-            </div>
-          </div>
+            {error ? <p className="rounded-card bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
+
+            {step === 1 ? (
+              <div className="space-y-4">
+                <label className="block space-y-1 text-sm">
+                  <span className="text-muted">Nome da organização</span>
+                  <input
+                    className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="Minha agência"
+                    required
+                  />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-muted">Seu nome</span>
+                  <input
+                    className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    value={adminName}
+                    onChange={(e) => setAdminName(e.target.value)}
+                  />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-muted">E-mail admin</span>
+                  <input
+                    className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    type="email"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-muted">Senha (mín. 8 caracteres)</span>
+                  <input
+                    className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-muted">Domínio do painel (opcional)</span>
+                  <input
+                    className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    value={panelDomain}
+                    onChange={(e) => setPanelDomain(e.target.value)}
+                    placeholder="painel.suaempresa.com"
+                  />
+                  <span className="text-xs text-muted">
+                    Depois aponte o DNS (registro A) para o IP deste servidor. Sem domínio, use IP:3000 por enquanto.
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted">
+                  <input
+                    type="checkbox"
+                    checked={panelUseHttps}
+                    onChange={(e) => setPanelUseHttps(e.target.checked)}
+                  />
+                  Usar HTTPS neste domínio (recomendado)
+                </label>
+                <button
+                  type="button"
+                  className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-medium text-white"
+                  disabled={!orgName || !adminEmail || adminPassword.length < 8}
+                  onClick={() => setStep(2)}
+                >
+                  Continuar
+                </button>
+              </div>
+            ) : null}
+
+            {step === 2 ? (
+              <div className="space-y-4">
+                <div className="rounded-card border border-white/80 bg-white/60 p-4 text-sm text-muted">
+                  <p className="font-medium text-ink">Obter licença free automaticamente</p>
+                  <p className="mt-1">Usa o e-mail da conta admin para gerar e ativar a chave free.</p>
+                  <button
+                    type="button"
+                    className="mt-3 w-full rounded-card bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    disabled={registerMutation.isPending || !adminEmail}
+                    onClick={() => registerMutation.mutate()}
+                  >
+                    {registerMutation.isPending ? "Gerando licença…" : "Gerar licença free"}
+                  </button>
+                </div>
+                <div className="text-center text-xs text-muted">ou cole uma chave existente</div>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-muted">Chave de licença</span>
+                  <input
+                    className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 font-mono text-xs focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    value={licenseKey}
+                    onChange={(e) => setLicenseKey(e.target.value)}
+                    placeholder="oplic_live_..."
+                  />
+                </label>
+                <details className="rounded-card border border-white/80 bg-white/40 p-3 text-sm">
+                  <summary className="cursor-pointer text-muted">Opções avançadas</summary>
+                  <label className="mt-3 block space-y-1">
+                    <span className="text-muted">URL do serviço de licenças</span>
+                    <input
+                      className="w-full rounded-card border border-ink/20 bg-white/90 px-3 py-2 font-mono text-xs focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      value={licenseServerUrl}
+                      onChange={(e) => setLicenseServerUrl(e.target.value)}
+                      placeholder="https://license.example.com"
+                    />
+                  </label>
+                </details>
+                <div className="flex gap-2">
+                  <button type="button" className="rounded-card border px-3 py-2 text-sm" onClick={() => setStep(1)}>
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    disabled={licenseKey.length < 20}
+                    onClick={() => setStep(3)}
+                  >
+                    Continuar
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {step === 3 ? (
+              <div className="space-y-4 text-sm">
+                <div className="rounded-card border border-white/80 bg-white/60 p-4 space-y-2">
+                  <p>
+                    <span className="text-muted">Organização:</span> {orgName}
+                  </p>
+                  <p>
+                    <span className="text-muted">Admin:</span> {adminEmail}
+                  </p>
+                  <p>
+                    <span className="text-muted">Domínio do painel:</span>{" "}
+                    {panelDomain.trim()
+                      ? `${panelUseHttps ? "https" : "http"}://${panelDomain.trim()}`
+                      : "IP:porta (sem domínio ainda)"}
+                  </p>
+                  <p className="truncate font-mono text-xs">
+                    <span className="text-muted">Licença:</span> {licenseKey.slice(0, 20)}…
+                  </p>
+                </div>
+                <p className="text-xs text-muted">
+                  Ao concluir, a licença é ativada e o próximo passo é conectar o servidor (novo ou com WordOps).
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" className="rounded-card border px-3 py-2 text-sm" onClick={() => setStep(2)}>
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 rounded-card bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    disabled={completeMutation.isPending}
+                    onClick={() => completeMutation.mutate()}
+                  >
+                    {completeMutation.isPending ? "Ativando…" : "Concluir e entrar"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
     </div>

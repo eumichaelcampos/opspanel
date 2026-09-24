@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { loadEnv } from "@opspanel/config";
 import { isLicenseKeyFormat } from "@opspanel/licensing";
-import { hashPassword } from "@opspanel/security";
+import { hashPassword, verifyPassword } from "@opspanel/security";
 import { PrismaService } from "../prisma/prisma.service";
 import { LicenseService } from "../license/license.service";
 import { LicenseCloudClient } from "../license/license-cloud.client";
@@ -12,6 +12,8 @@ export type SetupStatus = {
   completed: boolean;
   hasUsers: boolean;
   licenseConfigured: boolean;
+  /** true quando user+licença ok mas completed ainda false (tentativa anterior falhou no meio). */
+  canRecover: boolean;
   cloudConfigured: boolean;
   licenseServerUrl: string | null;
 };
@@ -42,6 +44,25 @@ export class SetupService {
     });
   }
 
+  private async markCompleted(panelDomain: string | null = null, panelUrl: string | null = null) {
+    await this.prisma.client.systemSetupState.upsert({
+      where: { id: "default" },
+      create: {
+        id: "default",
+        completed: true,
+        completedAt: new Date(),
+        panelDomain,
+        panelUrl,
+      },
+      update: {
+        completed: true,
+        completedAt: new Date(),
+        ...(panelDomain !== null ? { panelDomain } : {}),
+        ...(panelUrl !== null ? { panelUrl } : {}),
+      },
+    });
+  }
+
   async getStatus(): Promise<SetupStatus> {
     const env = loadEnv();
     const [setup, userCount, licenseState] = await Promise.all([
@@ -51,25 +72,29 @@ export class SetupService {
     ]);
 
     const licenseConfigured = Boolean(
-      env.LICENSE_KEY && isLicenseKeyFormat(env.LICENSE_KEY) && licenseState?.licenseKeyHash,
+      (env.LICENSE_KEY || process.env.LICENSE_KEY) &&
+        isLicenseKeyFormat(env.LICENSE_KEY || process.env.LICENSE_KEY || "") &&
+        licenseState?.licenseKeyHash,
     );
 
     // Setup incompleto até marcar completed (mesmo se user/licença já existirem por tentativa anterior).
     const needsSetup = !setup.completed;
+    const canRecover = !setup.completed && userCount > 0 && licenseConfigured;
 
     return {
       needsSetup,
       completed: setup.completed,
       hasUsers: userCount > 0,
       licenseConfigured,
-      cloudConfigured: Boolean(env.LICENSE_SERVER_URL),
-      licenseServerUrl: env.LICENSE_SERVER_URL ?? null,
+      canRecover,
+      cloudConfigured: Boolean(env.LICENSE_SERVER_URL || process.env.LICENSE_SERVER_URL),
+      licenseServerUrl: env.LICENSE_SERVER_URL ?? process.env.LICENSE_SERVER_URL ?? null,
     };
   }
 
   async registerFreeLicense(email: string, serverUrl?: string): Promise<{ licenseKey: string; plan: string }> {
     const env = loadEnv();
-    const base = (serverUrl ?? env.LICENSE_SERVER_URL)?.replace(/\/$/, "");
+    const base = (serverUrl ?? env.LICENSE_SERVER_URL ?? process.env.LICENSE_SERVER_URL)?.replace(/\/$/, "");
     if (!base) {
       throw new BadRequestException({
         error: {
@@ -183,20 +208,29 @@ export class SetupService {
       update: { role: "owner" },
     });
 
-    try {
-      await this.license.activateLicenseKey(licenseKey);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Tentativa anterior pode ter ativado a chave e falhado depois: se já está ok, segue.
-      const summary = await this.license.getSummary().catch(() => null);
-      const alreadyOk =
-        Boolean(summary?.licenseKeyConfigured) &&
-        summary?.status === "active" &&
-        Boolean(loadEnv().LICENSE_KEY && isLicenseKeyFormat(loadEnv().LICENSE_KEY));
-      if (!alreadyOk) {
-        throw new BadRequestException({
-          error: { code: "LICENSE_ACTIVATE_FAILED", message: msg || "Falha ao ativar a licença." },
-        });
+    const currentKey = process.env.LICENSE_KEY || loadEnv().LICENSE_KEY || "";
+    const summaryBefore = await this.license.getSummary().catch(() => null);
+    const licenseAlreadyOk =
+      Boolean(summaryBefore?.licenseKeyConfigured) &&
+      summaryBefore?.status === "active" &&
+      Boolean(currentKey) &&
+      (currentKey === licenseKey || status.licenseConfigured);
+
+    if (!licenseAlreadyOk) {
+      try {
+        await this.license.activateLicenseKey(licenseKey);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const summary = await this.license.getSummary().catch(() => null);
+        const alreadyOk =
+          Boolean(summary?.licenseKeyConfigured) &&
+          summary?.status === "active" &&
+          Boolean(process.env.LICENSE_KEY || loadEnv().LICENSE_KEY);
+        if (!alreadyOk) {
+          throw new BadRequestException({
+            error: { code: "LICENSE_ACTIVATE_FAILED", message: msg || "Falha ao ativar a licença." },
+          });
+        }
       }
     }
 
@@ -216,25 +250,18 @@ export class SetupService {
       const useHttps = input.panelUseHttps !== false;
       panelDomain = domain;
       panelUrl = `${useHttps ? "https" : "http"}://${domain}`;
-      patchPanelUrls(panelUrl, panelUrl);
     }
 
-    await this.prisma.client.systemSetupState.upsert({
-      where: { id: "default" },
-      create: {
-        id: "default",
-        completed: true,
-        completedAt: new Date(),
-        panelDomain,
-        panelUrl,
-      },
-      update: {
-        completed: true,
-        completedAt: new Date(),
-        panelDomain,
-        panelUrl,
-      },
-    });
+    // Marca completed depois de user+licença: patch de .env/domínio nunca deixa o setup stuck.
+    await this.markCompleted(panelDomain, panelUrl);
+
+    if (panelUrl) {
+      try {
+        patchPanelUrls(panelUrl, panelUrl);
+      } catch {
+        /* .env pode ser read-only; setup já está completo */
+      }
+    }
 
     return {
       ok: true,
@@ -242,6 +269,46 @@ export class SetupService {
       admin: { email: user.email },
       panelDomain,
       panelUrl,
+    };
+  }
+
+  /** Marca setup como concluído quando user+licença já existem (estado stuck). */
+  async recoverIncompleteSetup(input: { adminEmail: string; adminPassword: string }) {
+    await this.ensureSetupState();
+    const status = await this.getStatus();
+    if (status.completed) {
+      return { ok: true, alreadyCompleted: true, message: "Setup já estava concluído. Faça login." };
+    }
+    if (!status.hasUsers || !status.licenseConfigured) {
+      throw new BadRequestException({
+        error: {
+          code: "RECOVER_NOT_READY",
+          message: "Não há usuário e licença prontos para recuperar. Use o fluxo normal do setup.",
+        },
+      });
+    }
+
+    const email = input.adminEmail.trim().toLowerCase();
+    const user = await this.prisma.client.user.findUnique({ where: { email } });
+    if (!user?.passwordHash) {
+      throw new BadRequestException({
+        error: { code: "RECOVER_AUTH", message: "Admin não encontrado." },
+      });
+    }
+    const ok = await verifyPassword(user.passwordHash, input.adminPassword);
+    if (!ok) {
+      throw new BadRequestException({
+        error: { code: "RECOVER_AUTH", message: "Senha incorreta." },
+      });
+    }
+
+    await this.markCompleted();
+
+    return {
+      ok: true,
+      recovered: true,
+      message: "Setup marcado como concluído. Faça login em /login.",
+      admin: { email: user.email },
     };
   }
 }

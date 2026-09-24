@@ -21,6 +21,20 @@ export class SetupController {
     return { ok: true, ...result };
   }
 
+  /** Recupera setup pela metade (user + licença ok, completed=false). */
+  @Post("recover")
+  async recover(@Body() body: { adminEmail?: string; adminPassword?: string }) {
+    if (!body.adminEmail || !body.adminPassword) {
+      throw new BadRequestException({
+        error: { code: "VALIDATION_ERROR", message: "adminEmail e adminPassword são obrigatórios." },
+      });
+    }
+    return this.setup.recoverIncompleteSetup({
+      adminEmail: body.adminEmail,
+      adminPassword: body.adminPassword,
+    });
+  }
+
   @Post("complete")
   async complete(
     @Body()
@@ -38,15 +52,23 @@ export class SetupController {
     if (!body.organizationName || !body.adminEmail || !body.adminPassword || !body.licenseKey) {
       throw new BadRequestException({ error: { code: "VALIDATION_ERROR", message: "Campos obrigatórios ausentes." } });
     }
-    return this.setup.completeSetup({
-      organizationName: body.organizationName,
-      adminEmail: body.adminEmail,
-      adminPassword: body.adminPassword,
-      adminName: body.adminName,
-      licenseKey: body.licenseKey,
-      licenseServerUrl: body.licenseServerUrl,
-      panelDomain: body.panelDomain,
-      panelUseHttps: body.panelUseHttps,
-    });
+    try {
+      return await this.setup.completeSetup({
+        organizationName: body.organizationName,
+        adminEmail: body.adminEmail,
+        adminPassword: body.adminPassword,
+        adminName: body.adminName,
+        licenseKey: body.licenseKey,
+        licenseServerUrl: body.licenseServerUrl,
+        panelDomain: body.panelDomain,
+        panelUseHttps: body.panelUseHttps,
+      });
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException({
+        error: { code: "SETUP_FAILED", message: msg || "Falha ao concluir o setup." },
+      });
+    }
   }
 }

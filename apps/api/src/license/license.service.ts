@@ -312,9 +312,18 @@ export class LicenseService implements OnModuleInit, OnModuleDestroy {
 
     this.cached = null;
 
-    await this.prisma.client.licenseState.update({
+    const existing = await this.prisma.client.licenseState.findUnique({ where: { id: "default" } });
+    await this.prisma.client.licenseState.upsert({
       where: { id: "default" },
-      data: { licenseKeyHash: this.hashKey(licenseKey) },
+      create: {
+        id: "default",
+        instanceId: existing?.instanceId ?? randomUUID(),
+        licenseKeyHash: this.hashKey(licenseKey),
+        plan: "free",
+        status: LicenseStatus.active,
+        entitlements: {} as object,
+      },
+      update: { licenseKeyHash: this.hashKey(licenseKey) },
     });
 
     const client = LicenseCloudClient.fromEnv();
